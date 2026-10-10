@@ -1,75 +1,239 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
-import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+/** 主进程入口：单实例锁、三窗口、托盘、IPC 路由、30s 提醒/番茄钟调度循环。 */
 
-function createWindow(): void {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
-    show: false,
-    autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+import { app, BrowserWindow, ipcMain, Notification } from 'electron'
+import { electronApp, optimizer } from '@electron-toolkit/utils'
+import { IPC } from '../shared/ipc'
+import type { TodosMutateMsg } from '../shared/ipc'
+import type { Todo, Priority } from '../shared/types'
+import { addTodo, toggleTodo, editTodo, deleteTodo } from '../shared/todoStore'
+import { computeMood } from '../shared/mood'
+import type { Mood } from '../shared/mood'
+import { decideReminders } from '../shared/reminders'
+import type { ReminderEvent } from '../shared/reminders'
+import { pomoStart, pomoTick, pomoStop, POMO_IDLE } from '../shared/pomodoro'
+import type { PomoState } from '../shared/pomodoro'
+import {
+  loadTodos,
+  saveTodos,
+  idGen,
+  getSettings,
+  setSetting,
+  bumpTodayFocusCount,
+  getTodayFocusCount
+} from './store'
+import { createPetWindow, openTodoPanel, setPanelPinned, openSettingsWindow, broadcast, sendToPet } from './windows'
+import { createTray } from './tray'
+
+// ---------- 全局状态（主进程内存） ----------
+
+let petWin: BrowserWindow | null = null
+let todos: Todo[] = loadTodos()
+let pomoState: PomoState = { ...POMO_IDLE, focusCount: getTodayFocusCount(Date.now()) }
+const remindedSet = new Set<string>()
+let schedulerTimer: NodeJS.Timeout | null = null
+
+// ---------- 广播 ----------
+
+function broadcastTodos(): void {
+  broadcast(IPC.todosChanged, todos)
+}
+
+function broadcastMood(): void {
+  if (!petWin) return
+  const mood: Mood = computeMood(todos, pomoState.phase, Date.now())
+  sendToPet(petWin, IPC.moodChanged, mood)
+}
+
+function broadcastPomo(): void {
+  broadcast(IPC.pomoChanged, pomoState)
+}
+
+// ---------- todos 变更路由 ----------
+
+async function mutateTodos(msg: TodosMutateMsg): Promise<void> {
+  const now = Date.now()
+  switch (msg.op) {
+    case 'add': {
+      const p = msg.payload
+      // id 可由载荷携带（撤销恢复原条目时复用原 id）
+      const carryId = p.id
+      const gen = carryId ? (): string => carryId : idGen
+      todos = addTodo(todos, { title: p.title, dueAt: p.dueAt, priority: p.priority as Priority | undefined, notes: p.notes, source: p.source }, now, gen)
+      break
     }
-  })
+    case 'toggle':
+      todos = toggleTodo(todos, msg.payload.id, now)
+      break
+    case 'edit':
+      todos = editTodo(todos, msg.payload.id, msg.payload.patch as { title?: string; notes?: string; dueAt?: number; priority?: Priority })
+      break
+    case 'delete':
+      todos = deleteTodo(todos, msg.payload.id)
+      break
+  }
+  await saveTodos(todos)
+  broadcastTodos()
+  broadcastMood()
+}
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
+// ---------- 提醒与番茄钟调度（30s 一拍；纯逻辑见 src/shared） ----------
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  // Task 1: 主窗口暂时加载 pet 页（后续任务会拆分多窗口）
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/src/windows/pet/index.html`)
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/src/windows/pet/index.html'))
+function notify(title: string, body: string): void {
+  if (Notification.isSupported()) {
+    new Notification({ title, body }).show()
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+function runSchedulerTick(): void {
+  const now = Date.now()
+  const settings = getSettings()
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+  // 提醒：先发送（通知+pet 窗口），成功后才记 key——先记后发遇失败会永久丢提醒
+  const events: ReminderEvent[] = decideReminders(todos, now, remindedSet, settings.reminderLeadMin)
+  for (const ev of events) {
+    const key = `${ev.todoId}:${ev.kind}`
+    if (ev.kind === 'due') {
+      notify('⏰ 已到截止时间', ev.title)
+    } else {
+      notify('⏳ 即将到期', `${ev.title}（${settings.reminderLeadMin} 分钟后截止）`)
+    }
+    if (petWin) sendToPet(petWin, IPC.remindTrigger, ev)
+    remindedSet.add(key)
+  }
+
+  // 番茄钟
+  const tick = pomoTick(pomoState, now, settings.pomoFocusMin, settings.pomoRestMin)
+  if (tick.event === 'focusEnd') {
+    pomoState = tick.state
+    notify('🍅 专注结束', '休息一下吧')
+    broadcastPomo()
+    broadcastMood()
+  } else if (tick.event === 'restEnd') {
+    // 纯逻辑已 +1，但每日计数以磁盘为准（跨天重置）：bump 写盘并返回权威值
+    pomoState = { ...tick.state, focusCount: bumpTodayFocusCount(now) }
+    notify('☕ 休息结束', `今日已完成 ${pomoState.focusCount} 个番茄`)
+    broadcastPomo()
+    broadcastMood()
+  } else {
+    pomoState = tick.state
+  }
+}
+
+function startScheduler(): void {
+  if (schedulerTimer) clearInterval(schedulerTimer)
+  schedulerTimer = setInterval(runSchedulerTick, 30_000)
+  console.log('[scheduler] 30s 调度循环已启动（提醒 + 番茄钟）')
+  runSchedulerTick() // 首拍立即执行，便于冒烟观察
+}
+
+// ---------- IPC 注册 ----------
+
+function registerIpc(): void {
+  ipcMain.on(IPC.petSetMouseIgnore, (_e, payload: { ignore: boolean }) => {
+    petWin?.setIgnoreMouseEvents(payload.ignore, { forward: true })
   })
 
-  // IPC test
+  ipcMain.on(IPC.openTodoPanel, () => {
+    if (petWin) openTodoPanel(petWin)
+  })
+
+  ipcMain.on(IPC.todoPanelPin, (_e, payload: { pinned: boolean }) => {
+    setPanelPinned(payload.pinned)
+  })
+
+  ipcMain.on(IPC.todosMutate, (_e, msg: TodosMutateMsg) => {
+    mutateTodos(msg).catch((err) => console.error('[ipc] todosMutate 失败:', err))
+  })
+
+  ipcMain.on(IPC.pomoCommand, (_e, payload: { op: 'start' | 'stop' }) => {
+    const now = Date.now()
+    const settings = getSettings()
+    if (payload.op === 'start') {
+      pomoState = pomoStart(pomoState, now, settings.pomoFocusMin)
+    } else {
+      pomoState = pomoStop(pomoState)
+    }
+    broadcastPomo()
+    broadcastMood()
+  })
+
+  ipcMain.on(IPC.openSettings, () => {
+    openSettingsWindow()
+  })
+
+  ipcMain.handle('todos:get', (): Todo[] => todos)
+  ipcMain.handle('pomo:get-state', (): PomoState => pomoState)
+
+  // 脚手架自带的 ping（占位页在用，T7 重写 pet 页后移除）
   ipcMain.on('ping', () => console.log('pong'))
+}
 
-  createWindow()
+// ---------- 应用生命周期 ----------
 
-  app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+// 单实例锁：第二个实例启动时聚焦已有实例的桌宠窗口后退出
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (petWin) {
+      if (petWin.isMinimized()) petWin.restore()
+      petWin.show()
+      petWin.focus()
+    }
   })
-})
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
+  app.whenReady().then(() => {
+    electronApp.setAppUserModelId('com.sinpo686.arktodopet')
+
+    app.on('browser-window-created', (_, window) => {
+      optimizer.watchWindowShortcuts(window)
+    })
+
+    registerIpc()
+    petWin = createPetWindow()
+    createTray(
+      (): void => {
+        if (!petWin) return
+        if (petWin.isVisible()) {
+          petWin.hide()
+        } else {
+          petWin.show()
+        }
+      },
+      (): void => {
+        if (petWin) openTodoPanel(petWin)
+      },
+      (): void => openSettingsWindow()
+    )
+    startScheduler()
+
+    // 开机自启（设置页 T12 提供开关，此处按存量设置应用）
+    app.setLoginItemSettings({ openAtLogin: getSettings().autostart })
+
+    // 初始广播：让已就绪的窗口拿到首份数据
+    setTimeout(() => {
+      broadcastTodos()
+      broadcastPomo()
+      broadcastMood()
+    }, 1500)
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        petWin = createPetWindow()
+      }
+    })
+  })
+}
+
 app.on('window-all-closed', () => {
+  // 桌宠应用：所有窗口关闭≠退出（托盘常驻），退出走托盘菜单/单实例外退出
   if (process.platform !== 'darwin') {
-    app.quit()
+    // 不 app.quit()：由托盘「退出」显式退出
   }
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+app.on('before-quit', () => {
+  if (schedulerTimer) clearInterval(schedulerTimer)
+  setSetting('petX', petWin?.getPosition()?.[0] ?? getSettings().petX)
+  setSetting('petY', petWin?.getPosition()?.[1] ?? getSettings().petY)
+})
