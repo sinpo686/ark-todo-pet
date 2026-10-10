@@ -5,3 +5,8 @@ out/
 .video_agent/
 *.log
 .DS_Store
+.eslintcache
+*.log*
+*.skel
+*.atlas
+models/
