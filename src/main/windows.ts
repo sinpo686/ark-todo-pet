@@ -42,6 +42,12 @@ export function createPetWindow(): BrowserWindow {
   })
   win.setIgnoreMouseEvents(true, { forward: true })
   win.once('ready-to-show', () => win.show())
+  if (is.dev) {
+    // dev 冒烟：renderer 的 console 默认不进主进程终端，转发出来便于无人工验证
+    win.webContents.on('console-message', (_event, ...args) => {
+      console.log('[pet-console]', ...args)
+    })
+  }
   win.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }

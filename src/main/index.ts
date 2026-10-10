@@ -21,7 +21,14 @@ import {
   bumpTodayFocusCount,
   getTodayFocusCount
 } from './store'
-import { createPetWindow, openTodoPanel, setPanelPinned, openSettingsWindow, broadcast, sendToPet } from './windows'
+import {
+  createPetWindow,
+  openTodoPanel,
+  setPanelPinned,
+  openSettingsWindow,
+  broadcast,
+  sendToPet
+} from './windows'
 import { createTray } from './tray'
 
 // ---------- 全局状态（主进程内存） ----------
@@ -58,14 +65,29 @@ async function mutateTodos(msg: TodosMutateMsg): Promise<void> {
       // id 可由载荷携带（撤销恢复原条目时复用原 id）
       const carryId = p.id
       const gen = carryId ? (): string => carryId : idGen
-      todos = addTodo(todos, { title: p.title, dueAt: p.dueAt, priority: p.priority as Priority | undefined, notes: p.notes, source: p.source }, now, gen)
+      todos = addTodo(
+        todos,
+        {
+          title: p.title,
+          dueAt: p.dueAt,
+          priority: p.priority as Priority | undefined,
+          notes: p.notes,
+          source: p.source
+        },
+        now,
+        gen
+      )
       break
     }
     case 'toggle':
       todos = toggleTodo(todos, msg.payload.id, now)
       break
     case 'edit':
-      todos = editTodo(todos, msg.payload.id, msg.payload.patch as { title?: string; notes?: string; dueAt?: number; priority?: Priority })
+      todos = editTodo(
+        todos,
+        msg.payload.id,
+        msg.payload.patch as { title?: string; notes?: string; dueAt?: number; priority?: Priority }
+      )
       break
     case 'delete':
       todos = deleteTodo(todos, msg.payload.id)
@@ -130,6 +152,8 @@ function startScheduler(): void {
 
 function registerIpc(): void {
   ipcMain.on(IPC.petSetMouseIgnore, (_e, payload: { ignore: boolean }) => {
+    // 命中翻转打点：renderer 仅在布尔翻转时发送，日志可据此确认穿透切换生效
+    console.log(`[ipc] pet:set-mouse-ignore ignore=${payload.ignore}`)
     petWin?.setIgnoreMouseEvents(payload.ignore, { forward: true })
   })
 
@@ -163,9 +187,6 @@ function registerIpc(): void {
 
   ipcMain.handle('todos:get', (): Todo[] => todos)
   ipcMain.handle('pomo:get-state', (): PomoState => pomoState)
-
-  // 脚手架自带的 ping（占位页在用，T7 重写 pet 页后移除）
-  ipcMain.on('ping', () => console.log('pong'))
 }
 
 // ---------- 应用生命周期 ----------
