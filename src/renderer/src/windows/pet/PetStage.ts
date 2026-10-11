@@ -96,6 +96,8 @@ export class PetStage {
   private mood: PetMood = 'normal'
   /** 番茄钟 focus 期间的强制坐姿（外部注入，非自主转移） */
   private sitHeld = false
+  /** 行走层（窗口左上角 y）：null=贴工作区底边；用户拖放后以落点为准（拖到哪停在哪） */
+  private restFloorY: number | null = null
   private lastDecisionAt = 0
   private lastMoveSentAt = 0
   /** 拖拽期间锁定不穿透（命中翻转器暂停） */
@@ -216,10 +218,12 @@ export class PetStage {
       action: 'idle',
       facing: 1,
       x: Math.min(Math.max(window.screenX, bounds.minX), bounds.maxX),
-      y: this.floorY(), // 启动即贴地（旧存档可能停在半空）
+      // 用户指令（拖到哪停在哪）：尊重窗口保存的 y 作为行走层，仅超界时贴地
+      y: Math.min(Math.max(window.screenY, wa.top), this.floorY()),
       vy: 0,
       lastChange: now
     }
+    this.restFloorY = this.ctx.y
     this.lastDecisionAt = now
     this.sendMove(this.ctx.x, this.ctx.y, true)
     this.app.ticker.add(this.onTick)
@@ -390,10 +394,10 @@ export class PetStage {
     return { minX: wa.left, maxX: wa.left + wa.width - window.innerWidth }
   }
 
-  /** 地面：窗口左上角的 y（脚底贴工作区底边） */
+  /** 地面：窗口左上角的 y。默认贴工作区底边；用户拖放后以落点为行走层（拖到哪停在哪） */
   private floorY(): number {
     const wa = this.workArea()
-    return wa.top + wa.height - window.innerHeight
+    return this.restFloorY ?? wa.top + wa.height - window.innerHeight
   }
 
   /** 拖拽目标钳制在工作区内（防拖出屏幕找回不回） */
@@ -485,15 +489,16 @@ export class PetStage {
         console.log('[pet-pointer] classify=double -> interact（第一击的单击派发已取消）')
         this.setAction('interact', performance.now())
       } else {
-        // 位移超阈值但未经 pointermove 预热（极端/合成场景）：按位移平移窗口后下落
-        console.log('[pet-pointer] classify=drag（无 move 预热）-> 平移 + fall')
+        // 位移超阈值但未经 pointermove 预热（极端/合成场景）：按位移平移窗口后停在落点
+        console.log('[pet-pointer] classify=drag（无 move 预热）-> 平移并停留')
         const target = this.clampToWorkArea(
           this.ctx.x + (up.x - down.x),
           this.ctx.y + (up.y - down.y)
         )
         this.ctx = { ...this.ctx, x: target.x, y: target.y }
+        this.restFloorY = target.y
         this.sendMove(target.x, target.y, true)
-        this.setAction('fall', performance.now())
+        this.setAction('idle', performance.now())
       }
     }
   }
@@ -507,7 +512,12 @@ export class PetStage {
   private endDrag(): void {
     this.grabbing = false
     this.setPointerLocked(false)
-    this.setAction('fall', performance.now())
+    // 用户指令：拖到哪停在哪（不再坠回屏幕底边）——落点成为新的行走层
+    if (this.ctx) {
+      this.restFloorY = this.ctx.y
+      this.sendMove(this.ctx.x, this.ctx.y, true)
+    }
+    this.setAction('idle', performance.now())
   }
 
   /** 取消挂起的单击派发（双击窗口内的下一次按压 / 双击判定成立 / 销毁） */
