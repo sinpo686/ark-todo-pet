@@ -10,6 +10,12 @@ import type { Todo } from '../shared/types'
 
 const todosStore = new ElectronStore<{ todos: Todo[] }>({ name: 'todos', defaults: { todos: [] } })
 
+export interface AiConfig {
+  baseUrl: string
+  apiKey: string
+  model: string
+}
+
 const settingsStore = new ElectronStore<{
   petX: number | null
   petY: number | null
@@ -18,9 +24,21 @@ const settingsStore = new ElectronStore<{
   reminderLeadMin: number
   pomoFocusMin: number
   pomoRestMin: number
+  petScale: number
+  ai: AiConfig
 }>({
   name: 'settings',
-  defaults: { petX: null, petY: null, autostart: false, currentModel: null, reminderLeadMin: 15, pomoFocusMin: 25, pomoRestMin: 5 }
+  defaults: {
+    petX: null,
+    petY: null,
+    autostart: false,
+    currentModel: null,
+    reminderLeadMin: 15,
+    pomoFocusMin: 25,
+    pomoRestMin: 5,
+    petScale: 1,
+    ai: { baseUrl: '', apiKey: '', model: '' }
+  }
 })
 
 const pomoStore = new ElectronStore<Record<string, number>>({ name: 'pomodoro', defaults: {} })
@@ -74,6 +92,8 @@ export interface AppSettings {
   reminderLeadMin: number
   pomoFocusMin: number
   pomoRestMin: number
+  petScale: number
+  ai: AiConfig
 }
 
 export function getSettings(): AppSettings {
@@ -84,7 +104,9 @@ export function getSettings(): AppSettings {
     currentModel: settingsStore.get('currentModel'),
     reminderLeadMin: settingsStore.get('reminderLeadMin'),
     pomoFocusMin: settingsStore.get('pomoFocusMin'),
-    pomoRestMin: settingsStore.get('pomoRestMin')
+    pomoRestMin: settingsStore.get('pomoRestMin'),
+    petScale: settingsStore.get('petScale'),
+    ai: settingsStore.get('ai')
   }
 }
 

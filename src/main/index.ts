@@ -1,9 +1,9 @@
 /** 主进程入口：单实例锁、三窗口、托盘、IPC 路由、30s 提醒/番茄钟调度循环。 */
 
-import { app, BrowserWindow, ipcMain, Notification } from 'electron'
+import { app, BrowserWindow, ipcMain, net, Notification } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { IPC } from '../shared/ipc'
-import type { TodosMutateMsg } from '../shared/ipc'
+import type { TodosMutateMsg, AppSettingsShape } from '../shared/ipc'
 import type { Todo, Priority } from '../shared/types'
 import { addTodo, toggleTodo, editTodo, deleteTodo } from '../shared/todoStore'
 import { computeMood } from '../shared/mood'
@@ -27,13 +27,16 @@ import {
   setPanelPinned,
   openSettingsWindow,
   broadcast,
-  sendToPet
+  sendToPet,
+  applyPetScale
 } from './windows'
 import { createTray } from './tray'
+import type { TrayWithRefresh } from './tray'
 import {
   registerArkModelSchemePrivileges,
   registerArkModelProtocol,
-  registerModelIpc
+  registerModelIpc,
+  listLocalModels
 } from './modelLibrary'
 
 // arkmodel:// 必须在 app ready 之前注册为特权 scheme（standard+supportFetchAPI
@@ -43,6 +46,7 @@ registerArkModelSchemePrivileges()
 // ---------- 全局状态（主进程内存） ----------
 
 let petWin: BrowserWindow | null = null
+let trayRef: TrayWithRefresh | null = null
 let todos: Todo[] = loadTodos()
 let pomoState: PomoState = { ...POMO_IDLE, focusCount: getTodayFocusCount(Date.now()) }
 const remindedSet = new Set<string>()
@@ -204,6 +208,81 @@ function registerIpc(): void {
 
   ipcMain.handle('todos:get', (): Todo[] => todos)
   ipcMain.handle('pomo:get-state', (): PomoState => pomoState)
+
+  // ---------- 设置（T12） ----------
+
+  ipcMain.handle(IPC.settingsGet, (): AppSettingsShape => {
+    const s = getSettings()
+    return {
+      autostart: s.autostart,
+      currentModel: s.currentModel,
+      reminderLeadMin: s.reminderLeadMin,
+      pomoFocusMin: s.pomoFocusMin,
+      pomoRestMin: s.pomoRestMin,
+      petScale: s.petScale,
+      ai: s.ai
+    }
+  })
+
+  ipcMain.handle(IPC.settingsSet, async (_e, patch: Partial<AppSettingsShape>): Promise<void> => {
+    if (patch.autostart !== undefined) {
+      setSetting('autostart', patch.autostart)
+      app.setLoginItemSettings({ openAtLogin: patch.autostart })
+      console.log(`[settings] autostart=${patch.autostart}`)
+    }
+    if (patch.reminderLeadMin !== undefined) setSetting('reminderLeadMin', patch.reminderLeadMin)
+    if (patch.pomoFocusMin !== undefined) setSetting('pomoFocusMin', patch.pomoFocusMin)
+    if (patch.pomoRestMin !== undefined) setSetting('pomoRestMin', patch.pomoRestMin)
+    if (patch.petScale !== undefined) {
+      setSetting('petScale', patch.petScale)
+      if (petWin) applyPetScale(petWin, patch.petScale)
+      console.log(`[settings] petScale=${patch.petScale}`)
+    }
+    if (patch.ai !== undefined) setSetting('ai', patch.ai)
+    if (patch.currentModel !== undefined && patch.currentModel !== null) {
+      await setCurrentModel(patch.currentModel)
+    }
+  })
+
+  ipcMain.handle(IPC.modelsSetCurrent, async (_e, payload: { dir: string }): Promise<void> => {
+    await setCurrentModel(payload.dir)
+  })
+
+  ipcMain.handle(IPC.aiTest, async (): Promise<{ ok: boolean; latencyMs?: number; error?: string }> => {
+    const { ai } = getSettings()
+    if (!ai.baseUrl || !ai.apiKey || !ai.model) {
+      return { ok: false, error: '请先填写 Base URL / API Key / 模型名' }
+    }
+    const started = Date.now()
+    try {
+      const res = await net.fetch(`${ai.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ai.apiKey}` },
+        body: JSON.stringify({ model: ai.model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 4 }),
+        signal: AbortSignal.timeout(20_000)
+      })
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        return { ok: false, error: `HTTP ${res.status} ${body.slice(0, 120)}` }
+      }
+      return { ok: true, latencyMs: Date.now() - started }
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+}
+
+/** 切换当前模型：校验本地存在 → 写设置 → 广播 modelChanged（pet 窗口重载）→ 托盘刷新 */
+async function setCurrentModel(dir: string): Promise<void> {
+  const models = await listLocalModels()
+  const target = models.find((m) => m.dir === dir)
+  if (!target || !target.skel) {
+    throw new Error(`本地不存在可用的模型: ${dir}`)
+  }
+  setSetting('currentModel', dir)
+  broadcast(IPC.modelChanged, target)
+  trayRef?.refresh()
+  console.log(`[settings] 切换干员 -> ${dir}（${target.name}）`)
 }
 
 // ---------- 应用生命周期 ----------
@@ -228,10 +307,10 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     registerIpc()
-    registerModelIpc()
+    registerModelIpc(() => trayRef?.refresh())
     registerArkModelProtocol()
     petWin = createPetWindow()
-    createTray(
+    trayRef = createTray(
       (): void => {
         if (!petWin) return
         if (petWin.isVisible()) {
@@ -243,7 +322,14 @@ if (!app.requestSingleInstanceLock()) {
       (): void => {
         if (petWin) openTodoPanel(petWin)
       },
-      (): void => openSettingsWindow()
+      (): void => openSettingsWindow(),
+      {
+        getModels: () => listLocalModels(),
+        getCurrent: () => getSettings().currentModel,
+        onSwitchModel: (dir: string): void => {
+          setCurrentModel(dir).catch((err) => console.error('[tray] 切换模型失败:', String(err)))
+        }
+      }
     )
     startScheduler()
 

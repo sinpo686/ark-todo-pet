@@ -7,6 +7,21 @@ import { getSettings, setSetting } from './store'
 
 export const PET_SIZE = { width: 300, height: 360 }
 
+/** 缩放安全边界（与设置页滑杆 0.5–2.0 一致） */
+export function clampScale(scale: number): number {
+  if (!Number.isFinite(scale) || scale <= 0) return 1
+  return Math.min(2, Math.max(0.5, scale))
+}
+
+/** 应用桌宠缩放：重设窗口尺寸并保持底部锚定（模型按窗口高度自适应） */
+export function applyPetScale(petWin: BrowserWindow, scale: number): void {
+  const s = clampScale(scale)
+  const bounds = petWin.getBounds()
+  const w = Math.round(PET_SIZE.width * s)
+  const h = Math.round(PET_SIZE.height * s)
+  petWin.setBounds({ x: bounds.x, y: bounds.y + (bounds.height - h), width: w, height: h })
+}
+
 function loadWindowPage(win: BrowserWindow, page: 'pet' | 'todo' | 'settings'): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/src/windows/${page}/index.html`)
@@ -26,11 +41,12 @@ function baseWebPrefs(): Electron.WebPreferences {
 export function createPetWindow(): BrowserWindow {
   const settings = getSettings()
   const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize
+  const scale = clampScale(settings.petScale)
   const win = new BrowserWindow({
-    width: PET_SIZE.width,
-    height: PET_SIZE.height,
+    width: Math.round(PET_SIZE.width * scale),
+    height: Math.round(PET_SIZE.height * scale),
     x: settings.petX ?? Math.floor(screenW * 0.7),
-    y: settings.petY ?? Math.floor(screenH - PET_SIZE.height),
+    y: settings.petY ?? Math.floor(screenH - PET_SIZE.height * scale),
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -136,6 +152,11 @@ export function openSettingsWindow(): void {
     settingsWin.on('closed', () => {
       settingsWin = null
     })
+    if (is.dev) {
+      settingsWin.webContents.on('console-message', (_event, ...args) => {
+        console.log('[settings-console]', ...args)
+      })
+    }
     loadWindowPage(settingsWin, 'settings')
     console.log('[windows] settings 窗口已创建（懒）')
   }

@@ -40,35 +40,51 @@ function PetWindow(): React.JSX.Element {
       })
     }
 
-    window.api
-      .modelsListLocal()
-      .then(async (models) => {
-        const target = models.find((m) => m.skel)
+    const loadEntry = async (
+      target: { dir: string; skel?: string; mapping?: Partial<Record<string, string>> } | undefined
+    ): Promise<void> => {
+      if (disposed) return
+      if (!target || !target.skel) {
+        console.warn('[pet] 未找到本地干员模型（userData/models/ 无 .skel 目录）')
+        setSpineState('no-model')
+        return
+      }
+      try {
+        await stage.loadSpine(target.dir, target.skel, target.mapping)
         if (disposed) return
-        if (!target || !target.skel) {
-          console.warn('[pet] 未找到本地干员模型（userData/models/ 无 .skel 目录）')
-          setSpineState('no-model')
-          return
-        }
-        try {
-          await stage.loadSpine(target.dir, target.skel, target.mapping)
-          if (disposed) return
-          startBehavior()
-          setSpineState('ok')
-        } catch (err) {
-          console.error('[pet] Spine 加载失败:', err)
-          if (disposed) return
-          setSpineError(String(err))
-          setSpineState('failed')
-        }
+        startBehavior()
+        setSpineState('ok')
+      } catch (err) {
+        console.error('[pet] Spine 加载失败:', err)
+        if (disposed) return
+        setSpineError(String(err))
+        setSpineState('failed')
+      }
+    }
+
+    // 启动选模：优先设置里的 currentModel（T12 切换干员），否则首个含 .skel 的本地模型
+    Promise.all([window.api.modelsListLocal(), window.api.settingsGet()])
+      .then(([models, settings]) => {
+        if (disposed) return
+        const target =
+          models.find((m) => m.dir === settings.currentModel && m.skel) ??
+          models.find((m) => m.skel)
+        return loadEntry(target)
       })
       .catch((err: unknown) => {
-        console.error('[pet] modelsListLocal 失败:', err)
+        console.error('[pet] 模型清单/设置读取失败:', err)
         if (!disposed) {
           setSpineError(String(err))
           setSpineState('failed')
         }
       })
+
+    // 切换干员（托盘菜单 / 设置页）→ 重载 Spine
+    const offModelChanged = window.api.onModelChanged((entry) => {
+      console.log(`[pet] 收到切换干员: ${entry.dir}（${entry.name}）`)
+      setSpineState('loading')
+      loadEntry(entry)
+    })
 
     // 情绪联动：影响走动概率与动画选片（moodParams 在 PetStage 内消费）
     const offMood = window.api.onMoodChanged((mood) => stage.setMood(mood))
@@ -198,7 +214,9 @@ function PetWindow(): React.JSX.Element {
           console.log(
             `[smoke] 双击取证：派发计数=${clickDispatchCount}（期望仍=1，第一击派发已被取消）`
           )
-        )
+        ),
+        // T12 冒烟：12s 打开设置窗（settings-smoke 2.5s 后自跑切换 → modelChanged 回流本页）
+        at(12000, () => window.api.openSettings())
       )
     }
 
@@ -208,6 +226,7 @@ function PetWindow(): React.JSX.Element {
       offMood()
       offPomo()
       offRemind()
+      offModelChanged()
       stage.destroy()
     }
   }, [])

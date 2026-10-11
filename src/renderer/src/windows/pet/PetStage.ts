@@ -156,6 +156,12 @@ export class PetStage {
       `[PetStage] spine 载入成功：动画清单 ${names.length} 条 [${names.slice(0, 8).join(' / ')}${names.length > 8 ? ' / …' : ''}]`
     )
 
+    // 换模：先移除并销毁旧 spine（T12 切换干员支持）
+    if (this.spine) {
+      this.app.stage.removeChild(this.spine)
+      this.spine.destroy()
+      this.spine = null
+    }
     this.spine = spine
     this.app.stage.addChild(spine)
     const current = this.play('idle', 'normal') ?? this.playFirstAvailable(names)

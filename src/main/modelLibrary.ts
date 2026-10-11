@@ -10,7 +10,7 @@
  * gh CLI 仅供 spike 命令行验证，运行时不依赖（主进程无 gh 可用性保证）。
  */
 
-import { app, ipcMain, net, protocol } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol } from 'electron'
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import * as http from 'http'
@@ -443,8 +443,40 @@ export function registerArkModelProtocol(): void {
   console.log('[modelLibrary] arkmodel:// 协议已挂载（仅限 userData/models/）')
 }
 
-// ---------- IPC（T12 前仅暴露 spike 验证所需的最小通道） ----------
+// ---------- IPC ----------
 
-export function registerModelIpc(): void {
+/** 下载进度转发目标：发出方不关心谁在听（设置窗订阅） */
+function emitDownloadProgress(dir: string, pct: number): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send(IPC.modelsDownloadProgress, { dir, pct })
+    }
+  }
+}
+
+export function registerModelIpc(onDownloaded?: (dir: string) => void): void {
   ipcMain.handle(IPC.modelsListLocal, () => listLocalModels())
+  ipcMain.handle(IPC.modelsListRemote, () => listRemoteModels())
+  ipcMain.handle(IPC.modelsDownload, async (_e, payload: { dir: string }): Promise<void> => {
+    await downloadModel(payload.dir, (pct) => emitDownloadProgress(payload.dir, pct))
+    onDownloaded?.(payload.dir)
+  })
+  ipcMain.handle(
+    IPC.modelsImportZip,
+    async (): Promise<{ ok: boolean; dir?: string; error?: string }> => {
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: '模型压缩包', extensions: ['zip'] }]
+      })
+      if (result.canceled || result.filePaths.length === 0) {
+        return { ok: false, error: '已取消' }
+      }
+      try {
+        await importModelZip(result.filePaths[0])
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: String(err) }
+      }
+    }
+  )
 }

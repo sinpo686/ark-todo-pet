@@ -17,7 +17,16 @@ export const IPC = {
   moodChanged: 'mood:changed',
   remindTrigger: 'remind:trigger',
   openSettings: 'settings:open',
-  modelsListLocal: 'models:list-local'
+  modelsListLocal: 'models:list-local',
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
+  modelsListRemote: 'models:list-remote',
+  modelsDownload: 'models:download',
+  modelsDownloadProgress: 'models:download-progress',
+  modelsImportZip: 'models:import-zip',
+  modelsSetCurrent: 'models:set-current',
+  modelChanged: 'model:changed',
+  aiTest: 'ai:test'
 } as const
 
 export type TodosMutateMsg =
@@ -67,8 +76,28 @@ export interface ApiShape {
   getTodos(): Promise<Todo[]>
   getPomoState(): Promise<PomoState>
   modelsListLocal(): Promise<ModelEntry[]>
+  settingsGet(): Promise<AppSettingsShape>
+  settingsSet(patch: Partial<AppSettingsShape>): Promise<void>
+  modelsListRemote(): Promise<ModelEntry[]>
+  modelsDownload(dir: string): Promise<void>
+  onModelsDownloadProgress(cb: (p: { dir: string; pct: number }) => void): () => void
+  modelsImportZip(): Promise<{ ok: boolean; dir?: string; error?: string }>
+  modelsSetCurrent(dir: string): Promise<void>
+  onModelChanged(cb: (entry: ModelEntry) => void): () => void
+  aiTest(): Promise<{ ok: boolean; latencyMs?: number; error?: string }>
   onTodosChanged(cb: (todos: Todo[]) => void): () => void
   onPomoChanged(cb: (state: PomoState) => void): () => void
   onMoodChanged(cb: (mood: Mood) => void): () => void
   onRemindTrigger(cb: (event: ReminderEvent) => void): () => void
+}
+
+/** settings:get / settings:set 的载荷形状（与 main 侧 AppSettings 对应，electron 无关） */
+export interface AppSettingsShape {
+  autostart: boolean
+  currentModel: string | null
+  reminderLeadMin: number
+  pomoFocusMin: number
+  pomoRestMin: number
+  petScale: number
+  ai: { baseUrl: string; apiKey: string; model: string }
 }

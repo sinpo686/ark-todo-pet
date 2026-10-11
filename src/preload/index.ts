@@ -4,7 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IPC } from '../shared/ipc'
 import type { TodosMutateMsg } from '../shared/ipc'
-import type { ModelEntry } from '../shared/ipc'
+import type { ModelEntry, AppSettingsShape } from '../shared/ipc'
 import type { Todo } from '../shared/types'
 import type { PomoState } from '../shared/pomodoro'
 import type { Mood } from '../shared/mood'
@@ -40,6 +40,41 @@ const api = {
   },
   modelsListLocal(): Promise<ModelEntry[]> {
     return ipcRenderer.invoke(IPC.modelsListLocal)
+  },
+  settingsGet(): Promise<AppSettingsShape> {
+    return ipcRenderer.invoke(IPC.settingsGet)
+  },
+  async settingsSet(patch: Partial<AppSettingsShape>): Promise<void> {
+    await ipcRenderer.invoke(IPC.settingsSet, patch)
+  },
+  modelsListRemote(): Promise<ModelEntry[]> {
+    return ipcRenderer.invoke(IPC.modelsListRemote)
+  },
+  modelsDownload(dir: string): Promise<void> {
+    return ipcRenderer.invoke(IPC.modelsDownload, { dir })
+  },
+  onModelsDownloadProgress(cb: (p: { dir: string; pct: number }) => void): () => void {
+    const listener = (_e: Electron.IpcRendererEvent, p: { dir: string; pct: number }): void => cb(p)
+    ipcRenderer.on(IPC.modelsDownloadProgress, listener)
+    return (): void => {
+      ipcRenderer.removeListener(IPC.modelsDownloadProgress, listener)
+    }
+  },
+  modelsImportZip(): Promise<{ ok: boolean; dir?: string; error?: string }> {
+    return ipcRenderer.invoke(IPC.modelsImportZip)
+  },
+  async modelsSetCurrent(dir: string): Promise<void> {
+    await ipcRenderer.invoke(IPC.modelsSetCurrent, { dir })
+  },
+  onModelChanged(cb: (dir: string) => void): () => void {
+    const listener = (_e: Electron.IpcRendererEvent, dir: string): void => cb(dir)
+    ipcRenderer.on(IPC.modelChanged, listener)
+    return (): void => {
+      ipcRenderer.removeListener(IPC.modelChanged, listener)
+    }
+  },
+  aiTest(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
+    return ipcRenderer.invoke(IPC.aiTest)
   },
   onTodosChanged(cb: (todos: Todo[]) => void): () => void {
     const listener = (_e: Electron.IpcRendererEvent, todos: Todo[]): void => cb(todos)
