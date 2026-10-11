@@ -21,6 +21,7 @@ import {
   bumpTodayFocusCount,
   getTodayFocusCount
 } from './store'
+import type { AiConfig } from './store'
 import {
   createPetWindow,
   openTodoPanel,
@@ -38,6 +39,7 @@ import {
   registerModelIpc,
   listLocalModels
 } from './modelLibrary'
+import { createAiService } from './ai'
 
 // arkmodel:// 必须在 app ready 之前注册为特权 scheme（standard+supportFetchAPI
 // 才能被 renderer 的 fetch 正确解析），模块加载期即生效
@@ -47,6 +49,22 @@ registerArkModelSchemePrivileges()
 
 let petWin: BrowserWindow | null = null
 let trayRef: TrayWithRefresh | null = null
+
+// AI 对话服务（T13）：工具执行走与 UI 相同的 mutate 路径（source='ai'）
+const aiService = createAiService({
+  getAiConfig: (): AiConfig => getSettings().ai,
+  getTodos: (): Todo[] => todos,
+  getMood: (): Mood => computeMood(todos, pomoState.phase, Date.now()),
+  addTodo: async (input): Promise<void> => {
+    await mutateTodos({
+      op: 'add',
+      payload: { title: input.title, dueAt: input.dueAt, priority: input.priority, notes: input.notes, source: 'ai' }
+    })
+  },
+  completeTodo: async (id): Promise<void> => {
+    await mutateTodos({ op: 'toggle', payload: { id } })
+  }
+})
 let todos: Todo[] = loadTodos()
 let pomoState: PomoState = { ...POMO_IDLE, focusCount: getTodayFocusCount(Date.now()) }
 const remindedSet = new Set<string>()
@@ -247,6 +265,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.modelsSetCurrent, async (_e, payload: { dir: string }): Promise<void> => {
     await setCurrentModel(payload.dir)
   })
+
+  ipcMain.handle(IPC.chatSend, async (_e, payload: { text: string }) => aiService.send(payload.text))
+  ipcMain.handle(IPC.chatHistory, () => aiService.getUiHistory())
 
   ipcMain.handle(IPC.aiTest, async (): Promise<{ ok: boolean; latencyMs?: number; error?: string }> => {
     const { ai } = getSettings()

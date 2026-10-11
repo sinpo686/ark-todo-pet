@@ -26,7 +26,9 @@ export const IPC = {
   modelsImportZip: 'models:import-zip',
   modelsSetCurrent: 'models:set-current',
   modelChanged: 'model:changed',
-  aiTest: 'ai:test'
+  aiTest: 'ai:test',
+  chatSend: 'chat:send',
+  chatHistory: 'chat:history'
 } as const
 
 export type TodosMutateMsg =
@@ -85,6 +87,8 @@ export interface ApiShape {
   modelsSetCurrent(dir: string): Promise<void>
   onModelChanged(cb: (entry: ModelEntry) => void): () => void
   aiTest(): Promise<{ ok: boolean; latencyMs?: number; error?: string }>
+  chatSend(text: string): Promise<ChatMsgShape[]>
+  chatGetHistory(): Promise<ChatMsgShape[]>
   onTodosChanged(cb: (todos: Todo[]) => void): () => void
   onPomoChanged(cb: (state: PomoState) => void): () => void
   onMoodChanged(cb: (mood: Mood) => void): () => void
@@ -100,4 +104,11 @@ export interface AppSettingsShape {
   pomoRestMin: number
   petScale: number
   ai: { baseUrl: string; apiKey: string; model: string }
+}
+
+/** 聊天消息（UI 渲染形状） */
+export interface ChatMsgShape {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  toolNote?: boolean
 }

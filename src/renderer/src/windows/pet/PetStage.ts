@@ -52,6 +52,8 @@ export interface BehaviorHooks {
   onPointerClick(): void
   /** 窗口移动请求（屏幕 DIP 坐标；已按 16ms 节流，动效关键时刻强制发） */
   onWindowMove(x: number, y: number): void
+  /** 右键（命中角色时；唤起 AI 聊天层） */
+  onContextMenu?(x: number, y: number): void
 }
 
 /** mousemove 评估节流间隔（ms） */
@@ -118,6 +120,15 @@ export class PetStage {
     view.addEventListener('pointermove', this.onPointerMove)
     view.addEventListener('pointerup', this.onPointerUp)
     view.addEventListener('pointercancel', this.onPointerCancel)
+    view.addEventListener('contextmenu', this.onContextMenu)
+  }
+
+  /** 右键：命中角色时唤起聊天层（并阻止默认菜单） */
+  private readonly onContextMenu = (e: MouseEvent): void => {
+    e.preventDefault()
+    if (this.hitTest && this.hitTest(e.clientX, e.clientY)) {
+      this.hooks?.onContextMenu?.(e.clientX, e.clientY)
+    }
   }
 
   get pixiApp(): Application {
@@ -599,6 +610,7 @@ export class PetStage {
     view.removeEventListener('pointermove', this.onPointerMove)
     view.removeEventListener('pointerup', this.onPointerUp)
     view.removeEventListener('pointercancel', this.onPointerCancel)
+    view.removeEventListener('contextmenu', this.onContextMenu)
     this.app.ticker.remove(this.onTick)
     // removeView=true 移除画布 DOM；children=true 连带销毁 stage 上的显示对象
     this.app.destroy(true, { children: true })

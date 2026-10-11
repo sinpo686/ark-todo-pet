@@ -76,6 +76,12 @@ const api = {
   aiTest(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
     return ipcRenderer.invoke(IPC.aiTest)
   },
+  chatSend(text: string): Promise<import('../shared/ipc').ChatMsgShape[]> {
+    return ipcRenderer.invoke(IPC.chatSend, { text })
+  },
+  chatGetHistory(): Promise<import('../shared/ipc').ChatMsgShape[]> {
+    return ipcRenderer.invoke(IPC.chatHistory)
+  },
   onTodosChanged(cb: (todos: Todo[]) => void): () => void {
     const listener = (_e: Electron.IpcRendererEvent, todos: Todo[]): void => cb(todos)
     ipcRenderer.on(IPC.todosChanged, listener)

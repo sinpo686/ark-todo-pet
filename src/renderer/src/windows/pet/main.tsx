@@ -8,6 +8,7 @@
 import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { PetStage } from './PetStage'
+import { ChatPanel } from './ChatPanel'
 
 type SpineState = 'loading' | 'ok' | 'no-model' | 'failed'
 
@@ -15,6 +16,7 @@ function PetWindow(): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const [spineState, setSpineState] = useState<SpineState>('loading')
   const [spineError, setSpineError] = useState('')
+  const [chatOpen, setChatOpen] = useState(false)
 
   useEffect(() => {
     const host = hostRef.current
@@ -36,7 +38,11 @@ function PetWindow(): React.JSX.Element {
           console.log(`[pet] onPointerClick -> openTodoPanel（第 ${clickDispatchCount} 次）`)
           window.api.openTodoPanel()
         },
-        onWindowMove: (x, y): void => window.api.petMoveWindow(x, y)
+        onWindowMove: (x, y): void => window.api.petMoveWindow(x, y),
+        onContextMenu: (): void => {
+          console.log('[pet] 右键 -> 切换聊天层')
+          setChatOpen((v) => !v)
+        }
       })
     }
 
@@ -216,7 +222,41 @@ function PetWindow(): React.JSX.Element {
           )
         ),
         // T12 冒烟：12s 打开设置窗（settings-smoke 2.5s 后自跑切换 → modelChanged 回流本页）
-        at(12000, () => window.api.openSettings())
+        at(12000, () => window.api.openSettings()),
+        // T13 冒烟：14s 右键（命中角色）→ 聊天层打开；16s 自动发一条 → 未配置 AI 的引导回复取证
+        at(14000, () => {
+          const canvas = document.querySelector('canvas')
+          if (canvas) {
+            canvas.dispatchEvent(
+              new MouseEvent('contextmenu', {
+                clientX: window.innerWidth / 2,
+                clientY: window.innerHeight - 40,
+                bubbles: true
+              })
+            )
+          }
+        }),
+        at(16500, () => {
+          const input = document.querySelector<HTMLInputElement>('.chat-input')
+          if (!input) {
+            console.warn('[chat-smoke] 聊天层未打开（contextmenu 未生效）')
+            return
+          }
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+          setter?.call(input, '冒烟测试')
+          input.dispatchEvent(new Event('input', { bubbles: true }))
+          window.setTimeout(() => {
+            input.dispatchEvent(
+              new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
+            )
+          }, 100)
+        }),
+        at(19000, () => {
+          const last = document.querySelector('.chat-list > div:last-child')
+          console.log(
+            `[chat-smoke] 最后一条消息：${last?.textContent?.slice(0, 60) ?? '（无）'}（未配置 key 时应为引导文案）`
+          )
+        })
       )
     }
 
@@ -257,7 +297,8 @@ function PetWindow(): React.JSX.Element {
             : `干员模型加载失败，请检查模型文件是否完整。${spineError ? `（${spineError}）` : ''}`}
         </div>
       )}
-      {/* T10+ ChatPanel / 气泡层叠加于此（保持 React 壳） */}
+      {/* T13 聊天层（右键桌宠唤起）；T11 气泡层后续叠加于此 */}
+      {chatOpen && <ChatPanel onClose={(): void => setChatOpen(false)} />}
     </div>
   )
 }
