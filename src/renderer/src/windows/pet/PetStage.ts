@@ -453,6 +453,9 @@ export class PetStage {
 
   // ---- T9：指针手势（画布层） ----
 
+  /** 本次按压是否走主进程光标驱动（真实输入 true；合成事件走渲染层 pointermove 路径） */
+  private pressedViaMain = false
+
   private readonly onPointerDown = (e: PointerEvent): void => {
     if (this.destroyed || !this.ctx) return
     if (e.button !== 0) return
@@ -460,9 +463,12 @@ export class PetStage {
     if (!this.hitTestSpineBounds(e.clientX, e.clientY)) return
     // 按下即锁定不穿透（拖动中光标可能移出命中盒，主进程轮询不得中途开穿透掐断事件流）
     this.setPointerLocked(true)
-    // 真实 pointermove 不投递（透明窗限制）：按压上报主进程，由其轮询光标驱动窗口跟随；
-    // 本页 ticker 用 window.screenX/Y 同步视觉与 ctx
-    window.api.petPressBegin(e.screenX, e.screenY)
+    // 真实输入：按压上报主进程，由其 33ms 光标轮询驱动窗口跟随（渲染层收不到
+    // 可靠的真实 pointermove，且双驱动会竞态互甩）。合成事件走本页 pointermove 路径。
+    this.pressedViaMain = e.isTrusted
+    if (this.pressedViaMain) {
+      window.api.petPressBegin(e.screenX, e.screenY)
+    }
     // 双击消歧（计划 §4.3）：300ms 窗口内的下一次有效按压取消挂起的单击派发
     if (this.pendingClickTimer !== null) {
       this.cancelPendingClick()
@@ -478,6 +484,10 @@ export class PetStage {
   }
 
   private readonly onPointerMove = (e: PointerEvent): void => {
+    // 真实输入的拖动由主进程光标轮询驱动（33ms setBounds 跟随）——若渲染层同时
+    // 按 move 事件驱动窗口，两套目标竞态互甩（用户所见"疯狂乱动"）。此路径仅
+    // 服务合成事件（冒烟自检，isTrusted === false）。
+    if (e.isTrusted) return
     if (this.destroyed || !this.ctx || !this.ptrDown) return
     if (!this.grabbing) {
       // 未过 8px 阈值前不启动拖拽（期间的移动仍可能构成 click/double 的位移判定）
@@ -499,7 +509,7 @@ export class PetStage {
     const hadDown = down !== null
     this.ptrDown = null
     this.ptrDownScreen = null
-    window.api.petPressEnd() // 主进程停止光标跟随
+    if (this.pressedViaMain) window.api.petPressEnd() // 主进程停止光标跟随
     if (this.destroyed || !this.ctx) return
     if (this.grabbing) {
       // 松手：拖到哪停在哪（endDrag 内部解锁 + ctx 已由 ticker 同步窗口实际位置）
@@ -548,7 +558,7 @@ export class PetStage {
   private readonly onPointerCancel = (): void => {
     this.ptrDown = null
     this.ptrDownScreen = null
-    window.api.petPressEnd()
+    if (this.pressedViaMain) window.api.petPressEnd()
     if (this.grabbing) {
       this.endDrag()
     } else if (this.pointerLocked) {
