@@ -54,6 +54,8 @@ export interface BehaviorHooks {
   onWindowMove(x: number, y: number): void
   /** 右键（命中角色时；唤起 AI 聊天层） */
   onContextMenu?(x: number, y: number): void
+  /** 戳一戳（双击；气泡台词用） */
+  onInteract?(): void
 }
 
 /** mousemove 评估节流间隔（ms） */
@@ -488,6 +490,7 @@ export class PetStage {
       if (kind === 'double') {
         console.log('[pet-pointer] classify=double -> interact（第一击的单击派发已取消）')
         this.setAction('interact', performance.now())
+        this.hooks?.onInteract?.()
       } else {
         // 位移超阈值但未经 pointermove 预热（极端/合成场景）：按位移平移窗口后停在落点
         console.log('[pet-pointer] classify=drag（无 move 预热）-> 平移并停留')

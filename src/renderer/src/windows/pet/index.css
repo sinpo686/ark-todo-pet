@@ -135,3 +135,49 @@
   color: #8b929e;
   cursor: default;
 }
+
+/* T11 头顶气泡：角色上方居中，浅色，淡入淡出 */
+.pet-bubble {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 62%;
+  max-width: 220px;
+  padding: 6px 10px;
+  border: 1px solid #d9dee4;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.97);
+  color: #1f2328;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: system-ui, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.14);
+  pointer-events: none;
+  user-select: none;
+  animation: bubble-in 0.2s ease-out;
+  z-index: 20;
+}
+
+.pet-bubble::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  width: 8px;
+  height: 8px;
+  transform: translateX(-50%) rotate(45deg);
+  background: rgba(255, 255, 255, 0.97);
+  border-right: 1px solid #d9dee4;
+  border-bottom: 1px solid #d9dee4;
+}
+
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}

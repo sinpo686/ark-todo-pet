@@ -9,6 +9,9 @@ import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { PetStage } from './PetStage'
 import { ChatPanel } from './ChatPanel'
+import { pickLine } from '../../../../shared/lines'
+import type { BubbleMood } from '../../../../shared/lines'
+import type { PomoState } from '../../../../shared/pomodoro'
 
 type SpineState = 'loading' | 'ok' | 'no-model' | 'failed'
 
@@ -17,6 +20,15 @@ function PetWindow(): React.JSX.Element {
   const [spineState, setSpineState] = useState<SpineState>('loading')
   const [spineError, setSpineError] = useState('')
   const [chatOpen, setChatOpen] = useState(false)
+  // T11 气泡：同屏至多一条（新顶旧），停留 4s 淡出
+  const [bubble, setBubble] = useState('')
+  const bubbleTimer = useRef<number | null>(null)
+  const moodRef = useRef<BubbleMood>('normal')
+  const showBubble = (text: string): void => {
+    setBubble(text)
+    if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current)
+    bubbleTimer.current = window.setTimeout(() => setBubble(''), 4000)
+  }
 
   useEffect(() => {
     const host = hostRef.current
@@ -42,6 +54,9 @@ function PetWindow(): React.JSX.Element {
         onContextMenu: (): void => {
           console.log('[pet] 右键 -> 切换聊天层')
           setChatOpen((v) => !v)
+        },
+        onInteract: (): void => {
+          showBubble(pickLine('interact', moodRef.current, Math.random))
         }
       })
     }
@@ -92,16 +107,38 @@ function PetWindow(): React.JSX.Element {
       loadEntry(entry)
     })
 
-    // 情绪联动：影响走动概率与动画选片（moodParams 在 PetStage 内消费）
-    const offMood = window.api.onMoodChanged((mood) => stage.setMood(mood))
-    // 番茄钟：focus 期间强制坐姿，rest/idle 解除
-    const offPomo = window.api.onPomoChanged((s) => stage.holdSit(s.phase === 'focus'))
+    // 情绪联动：影响走动概率与动画选片（moodParams 在 PetStage 内消费）+ 气泡心情记录
+    const offMood = window.api.onMoodChanged((mood) => {
+      stage.setMood(mood)
+      moodRef.current = mood
+    })
+    // 番茄钟：focus 期间强制坐姿，rest/idle 解除；相位切换时气泡提醒（T11）
+    let prevPhase: PomoState['phase'] | null = null
+    const offPomo = window.api.onPomoChanged((s) => {
+      stage.holdSit(s.phase === 'focus')
+      if (prevPhase === 'focus' && s.phase === 'rest') {
+        showBubble(pickLine('pomoFocusEnd', moodRef.current, Math.random))
+      } else if (prevPhase === 'rest' && s.phase === 'idle') {
+        showBubble(pickLine('pomoRestEnd', moodRef.current, Math.random))
+      }
+      prevPhase = s.phase
+    })
     window.api
       .getPomoState()
-      .then((s) => stage.holdSit(s.phase === 'focus'))
+      .then((s) => {
+        stage.holdSit(s.phase === 'focus')
+        prevPhase = s.phase
+      })
       .catch(() => {})
-    // 待办提醒：special 动画一次
-    const offRemind = window.api.onRemindTrigger(() => stage.triggerRemind())
+    // 待办提醒：special 动画 + 气泡（前缀 + 待办标题）
+    const offRemind = window.api.onRemindTrigger((event) => {
+      stage.triggerRemind()
+      showBubble(`${pickLine('remind', moodRef.current, Math.random)}${event.title}`)
+    })
+    // 心情闲聊：≥10 分钟一条（低频，不打扰）
+    const chatterTimer = window.setInterval(() => {
+      showBubble(pickLine('mood', moodRef.current, Math.random))
+    }, 10 * 60 * 1000)
 
     // dev 冒烟自检（T8 命中穿透 + T9 指针/行为路由 + §4.3 单击双击消歧）：
     // 2.5s/2.7s  矩形内/外 mousemove → 主进程 [ipc] pet:set-mouse-ignore 翻转；
@@ -267,6 +304,8 @@ function PetWindow(): React.JSX.Element {
       offPomo()
       offRemind()
       offModelChanged()
+      window.clearInterval(chatterTimer)
+      if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current)
       stage.destroy()
     }
   }, [])
@@ -297,7 +336,9 @@ function PetWindow(): React.JSX.Element {
             : `干员模型加载失败，请检查模型文件是否完整。${spineError ? `（${spineError}）` : ''}`}
         </div>
       )}
-      {/* T13 聊天层（右键桌宠唤起）；T11 气泡层后续叠加于此 */}
+      {/* T11 头顶气泡（心情闲聊/提醒/番茄/戳一戳；同屏一条 4s） */}
+      {bubble && <div className="pet-bubble">{bubble}</div>}
+      {/* T13 聊天层（右键桌宠唤起） */}
       {chatOpen && <ChatPanel onClose={(): void => setChatOpen(false)} />}
     </div>
   )
