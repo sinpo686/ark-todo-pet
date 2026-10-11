@@ -293,7 +293,7 @@ function PetWindow(): React.JSX.Element {
           }}
         >
           {spineState === 'no-model'
-            ? '未找到干员模型。请把 Ark-Models 的模型目录（含 .atlas/.png/.skel）放入应用的 models/ 文件夹，或在设置中下载（即将上线）。'
+            ? '未找到干员模型。点桌宠打开待办面板 → 右上角 ⚙ 设置 → 干员模型，从远端模型库下载；或把模型目录（含 .atlas/.png/.skel）放入应用的 models/ 文件夹。'
             : `干员模型加载失败，请检查模型文件是否完整。${spineError ? `（${spineError}）` : ''}`}
         </div>
       )}

@@ -158,6 +158,14 @@ export function App(): React.JSX.Element {
         <span className="titlebar-title">待 办</span>
         <button
           type="button"
+          className="pin-btn"
+          title="设置（模型 / 缩放 / AI / 番茄钟）"
+          onClick={(): void => window.api.openSettings()}
+        >
+          ⚙
+        </button>
+        <button
+          type="button"
           className={`pin-btn${pinned ? ' pinned' : ''}`}
           title={pinned ? '已固定：失焦不收起，点击取消' : '固定面板：失焦不自动收起'}
           onClick={togglePin}
