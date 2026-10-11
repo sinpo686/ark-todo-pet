@@ -14,6 +14,9 @@ const api = {
   petSetMouseIgnore(ignore: boolean): void {
     ipcRenderer.send(IPC.petSetMouseIgnore, { ignore })
   },
+  petMoveWindow(x: number, y: number): void {
+    ipcRenderer.send(IPC.petMoveWindow, { x, y })
+  },
   openTodoPanel(): void {
     ipcRenderer.send(IPC.openTodoPanel)
   },

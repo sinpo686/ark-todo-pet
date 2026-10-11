@@ -7,6 +7,7 @@ import type { Mood } from './mood'
 
 export const IPC = {
   petSetMouseIgnore: 'pet:set-mouse-ignore',
+  petMoveWindow: 'pet:move-window',
   openTodoPanel: 'todo:open-panel',
   todoPanelPin: 'todo:panel-pin',
   todosChanged: 'todos:changed',
@@ -56,6 +57,8 @@ export interface ModelEntry {
 /** renderer 侧 window.api 的形状（preload 按此实现；UI 任务按此消费） */
 export interface ApiShape {
   petSetMouseIgnore(ignore: boolean): void
+  /** 移动桌宠窗口到屏幕坐标（走动/拖拽/下落；主进程一次性 setPosition，节流由渲染层做） */
+  petMoveWindow(x: number, y: number): void
   openTodoPanel(): void
   todoPanelPin(pinned: boolean): void
   todosMutate(msg: TodosMutateMsg): void

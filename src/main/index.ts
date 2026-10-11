@@ -166,6 +166,14 @@ function registerIpc(): void {
     petWin?.setIgnoreMouseEvents(payload.ignore, { forward: true })
   })
 
+  // 走动/拖拽/下落的窗口移动：渲染层已按帧节流（16ms），主进程只做一次 setPosition；
+  // 窗口隐藏（托盘收起）时丢弃，避免隐形走动造成屏幕坐标与窗口位置失步
+  ipcMain.on(IPC.petMoveWindow, (_e, payload: { x: number; y: number }) => {
+    if (petWin && petWin.isVisible()) {
+      petWin.setPosition(Math.round(payload.x), Math.round(payload.y), false)
+    }
+  })
+
   ipcMain.on(IPC.openTodoPanel, () => {
     if (petWin) openTodoPanel(petWin)
   })
