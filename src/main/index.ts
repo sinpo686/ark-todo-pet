@@ -30,6 +30,15 @@ import {
   sendToPet
 } from './windows'
 import { createTray } from './tray'
+import {
+  registerArkModelSchemePrivileges,
+  registerArkModelProtocol,
+  registerModelIpc
+} from './modelLibrary'
+
+// arkmodel:// 必须在 app ready 之前注册为特权 scheme（standard+supportFetchAPI
+// 才能被 renderer 的 fetch 正确解析），模块加载期即生效
+registerArkModelSchemePrivileges()
 
 // ---------- 全局状态（主进程内存） ----------
 
@@ -211,6 +220,8 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     registerIpc()
+    registerModelIpc()
+    registerArkModelProtocol()
     petWin = createPetWindow()
     createTray(
       (): void => {

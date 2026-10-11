@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IPC } from '../shared/ipc'
 import type { TodosMutateMsg } from '../shared/ipc'
+import type { ModelEntry } from '../shared/ipc'
 import type { Todo } from '../shared/types'
 import type { PomoState } from '../shared/pomodoro'
 import type { Mood } from '../shared/mood'
@@ -34,25 +35,36 @@ const api = {
   getPomoState(): Promise<PomoState> {
     return ipcRenderer.invoke('pomo:get-state')
   },
+  modelsListLocal(): Promise<ModelEntry[]> {
+    return ipcRenderer.invoke(IPC.modelsListLocal)
+  },
   onTodosChanged(cb: (todos: Todo[]) => void): () => void {
     const listener = (_e: Electron.IpcRendererEvent, todos: Todo[]): void => cb(todos)
     ipcRenderer.on(IPC.todosChanged, listener)
-    return (): void => { ipcRenderer.removeListener(IPC.todosChanged, listener) }
+    return (): void => {
+      ipcRenderer.removeListener(IPC.todosChanged, listener)
+    }
   },
   onPomoChanged(cb: (state: PomoState) => void): () => void {
     const listener = (_e: Electron.IpcRendererEvent, state: PomoState): void => cb(state)
     ipcRenderer.on(IPC.pomoChanged, listener)
-    return (): void => { ipcRenderer.removeListener(IPC.pomoChanged, listener) }
+    return (): void => {
+      ipcRenderer.removeListener(IPC.pomoChanged, listener)
+    }
   },
   onMoodChanged(cb: (mood: Mood) => void): () => void {
     const listener = (_e: Electron.IpcRendererEvent, mood: Mood): void => cb(mood)
     ipcRenderer.on(IPC.moodChanged, listener)
-    return (): void => { ipcRenderer.removeListener(IPC.moodChanged, listener) }
+    return (): void => {
+      ipcRenderer.removeListener(IPC.moodChanged, listener)
+    }
   },
   onRemindTrigger(cb: (event: ReminderEvent) => void): () => void {
     const listener = (_e: Electron.IpcRendererEvent, event: ReminderEvent): void => cb(event)
     ipcRenderer.on(IPC.remindTrigger, listener)
-    return (): void => { ipcRenderer.removeListener(IPC.remindTrigger, listener) }
+    return (): void => {
+      ipcRenderer.removeListener(IPC.remindTrigger, listener)
+    }
   }
 }
 

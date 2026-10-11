@@ -4,9 +4,11 @@
     <meta charset="UTF-8" />
     <title>Pet</title>
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <!-- arkmodel: userData/models/ 本地模型协议（pixi-spine 的 skel/atlas/png 全部经 fetch 走它）；
+         worker-src blob: 为 pixi 纹理加载的 blob worker（createImageBitmap 解码） -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: arkmodel: blob:; connect-src 'self' arkmodel:; worker-src blob:"
     />
     <style>
       /* 透明窗口：画布必须铺满整个视口，去掉默认 body 边距，禁止滚动条 */

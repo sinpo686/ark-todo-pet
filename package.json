@@ -27,7 +27,8 @@
     "@pixi/unsafe-eval": "^7.4.3",
     "electron-store": "^8.2.0",
     "pixi-spine": "^4.0.6",
-    "pixi.js": "^7.4.3"
+    "pixi.js": "^7.4.3",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
@@ -36,6 +37,7 @@
     "@types/node": "^22.19.1",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "^5.1.1",
     "electron": "^39.2.6",
     "electron-builder": "^26.0.12",
