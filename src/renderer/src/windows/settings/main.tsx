@@ -66,8 +66,7 @@ function SettingsWindow(): React.JSX.Element {
                 .modelsSetCurrent(target.dir)
                 .then(() => console.log(`[settings-smoke] 切换指令已发：${target.dir}`))
                 .catch((e) => console.warn('[settings-smoke] 切换失败:', String(e)))
-            }
-          }
+            }          }
         )
       }, 2500)
     }
