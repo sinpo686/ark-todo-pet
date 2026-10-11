@@ -7,7 +7,17 @@ import type { Mood } from './mood'
 
 export const IPC = {
   petSetMouseIgnore: 'pet:set-mouse-ignore',
+  /** 渲染层上报角色命中盒（视口坐标）；主进程轮询光标权威判定穿透 */
+  petSetHitbox: 'pet:set-hitbox',
+  /** 拖拽期间锁定不穿透（主进程轮询跳过） */
+  petSetPointerLock: 'pet:set-pointer-lock',
   petMoveWindow: 'pet:move-window',
+  /** 拖拽按压：渲染层 pointerdown/up 可达但真实 pointermove 不投递（透明窗限制），
+   *  按压期间由主进程光标轮询驱动窗口跟随 */
+  petPressBegin: 'pet:press-begin',
+  petPressEnd: 'pet:press-end',
+  /** 光标进入/离开角色命中盒（主进程轮询翻转时广播；渲染层据此暂停自主走动） */
+  petCursorNear: 'pet:cursor-near',
   openTodoPanel: 'todo:open-panel',
   todoPanelPin: 'todo:panel-pin',
   todosChanged: 'todos:changed',
@@ -71,6 +81,14 @@ export interface ModelEntry {
 /** renderer 侧 window.api 的形状（preload 按此实现；UI 任务按此消费） */
 export interface ApiShape {
   petSetMouseIgnore(ignore: boolean): void
+  /** 上报角色命中盒（视口坐标，随布局/模型变化重报）；主进程据此轮询光标切换穿透 */
+  petSetHitbox(box: { x: number; y: number; w: number; h: number }): void
+  /** 拖拽锁定：true=按住期间强制不穿透 */
+  petSetPointerLock(locked: boolean): void
+  /** 按压开始/结束（屏幕坐标）：主进程轮询光标驱动窗口跟随拖动 */
+  petPressBegin(screenX: number, screenY: number): void
+  petPressEnd(): void
+  onPetCursorNear(cb: (near: boolean) => void): () => void
   /** 移动桌宠窗口到屏幕坐标（走动/拖拽/下落；主进程一次性 setPosition，节流由渲染层做） */
   petMoveWindow(x: number, y: number): void
   openTodoPanel(): void

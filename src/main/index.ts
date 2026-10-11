@@ -1,7 +1,7 @@
 /** 主进程入口：单实例锁、三窗口、托盘、IPC 路由、30s 提醒/番茄钟调度循环。 */
 
-import { app, BrowserWindow, dialog, ipcMain, net, Notification } from 'electron'
-import { electronApp, optimizer } from '@electron-toolkit/utils'
+import { app, BrowserWindow, dialog, ipcMain, net, Notification, screen } from 'electron'
+import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { IPC } from '../shared/ipc'
 import type { TodosMutateMsg, AppSettingsShape } from '../shared/ipc'
 import type { Todo, Priority } from '../shared/types'
@@ -54,6 +54,16 @@ registerArkModelSchemePrivileges()
 
 let petWin: BrowserWindow | null = null
 let trayRef: TrayWithRefresh | null = null
+/** 桌宠窗口当前穿透态（渲染层翻转时同步；setBounds 后需重断言以维持 forward 转发） */
+let petMouseIgnored = true
+/** 角色命中盒（视口坐标；渲染层上报，主进程叠加窗口位置得屏幕坐标） */
+let petHitbox: { x: number; y: number; w: number; h: number } | null = null
+/** 拖拽锁定：按住角色期间强制不穿透（渲染层上报） */
+let petPointerLocked = false
+/** 按压拖动状态：pointerdown 时记录原点，轮询光标驱动窗口跟随（真实 pointermove 不投递的兜底） */
+let petPressing = false
+let petPressCursor = { x: 0, y: 0 }
+let petPressWin = { x: 0, y: 0 }
 
 // AI 对话服务（T13）：工具执行走与 UI 相同的 mutate 路径（source='ai'）
 const aiService = createAiService({
@@ -178,6 +188,44 @@ function runSchedulerTick(): void {
   }
 }
 
+/**
+ * 桌宠穿透轮询（33ms）：主进程权威判定「光标是否在角色命中盒内」并切换
+ * setIgnoreMouseEvents。不再依赖 setIgnoreMouseEvents(forward) 的消息转发——
+ * 实测转发在透明窗 + setBounds 移动后不再向渲染层投递 mousemove（真实鼠标
+ * 事件因此到不了页面，拖拽/点击全部失效）。命中盒为视口坐标，叠加窗口位置
+ * 得屏幕坐标；拖拽锁定期间跳过（保持不穿透）。
+ */
+function startPetHitPoller(): void {
+  setInterval(() => {
+    if (!petWin || petWin.isDestroyed()) return
+    const pt = screen.getCursorScreenPoint()
+    // 按压拖动：窗口跟随光标（渲染层收不到真实 pointermove，由这里权威驱动）
+    if (petPressing) {
+      const size = getPinnedPetSize()
+      const tx = Math.round(petPressWin.x + pt.x - petPressCursor.x)
+      const ty = Math.round(petPressWin.y + pt.y - petPressCursor.y)
+      petWin.setBounds({ x: tx, y: ty, width: size.width, height: size.height })
+      return
+    }
+    if (!petHitbox) return
+    if (petPointerLocked) return // 锁定态已在 petSetPointerLock 即时应用
+    const b = petWin.getBounds()
+    const inside =
+      pt.x >= b.x + petHitbox.x &&
+      pt.x <= b.x + petHitbox.x + petHitbox.w &&
+      pt.y >= b.y + petHitbox.y &&
+      pt.y <= b.y + petHitbox.y + petHitbox.h
+    const shouldIgnore = !inside
+    if (shouldIgnore !== petMouseIgnored) {
+      petMouseIgnored = shouldIgnore
+      petWin.setIgnoreMouseEvents(shouldIgnore, { forward: true })
+      // 广播 near 态：渲染层在光标停留在角色身上时暂停自主走动（伸手抓她时她不走开）
+      broadcast(IPC.petCursorNear, inside)
+      if (is.dev) console.log(`[pet-hit] 光标${inside ? '进入' : '离开'}角色命中盒 -> ignore=${shouldIgnore}`)
+    }
+  }, 33)
+}
+
 function startScheduler(): void {
   if (schedulerTimer) clearInterval(schedulerTimer)
   schedulerTimer = setInterval(runSchedulerTick, 30_000)
@@ -189,13 +237,45 @@ function startScheduler(): void {
 
 function registerIpc(): void {
   ipcMain.on(IPC.petSetMouseIgnore, (_e, payload: { ignore: boolean }) => {
-    // 命中翻转打点：renderer 仅在布尔翻转时发送，日志可据此确认穿透切换生效
-    console.log(`[ipc] pet:set-mouse-ignore ignore=${payload.ignore}`)
+    // 兼容通道（渲染层翻转让位于主进程轮询，正常不再发送）
+    petMouseIgnored = payload.ignore
     petWin?.setIgnoreMouseEvents(payload.ignore, { forward: true })
   })
 
+  ipcMain.on(IPC.petSetHitbox, (_e, box: { x: number; y: number; w: number; h: number }) => {
+    petHitbox = box
+  })
+
+  ipcMain.on(IPC.petSetPointerLock, (_e, payload: { locked: boolean }) => {
+    petPointerLocked = payload.locked
+    if (petWin) {
+      // 仅状态真正变化时重断言——按住手势中途重设穿透标志会打断指针捕获
+      // （页面上表现为 pointerdown 后立刻 pointerup，按压瞬灭）
+      const target = !payload.locked
+      if (target !== petMouseIgnored) {
+        petMouseIgnored = target
+        petWin.setIgnoreMouseEvents(target, { forward: true })
+      }
+    }
+  })
+
+  ipcMain.on(IPC.petPressBegin, (_e, p: { screenX: number; screenY: number }) => {
+    if (!petWin || petWin.isDestroyed()) return
+    petPressing = true
+    petPressCursor = { x: p.screenX, y: p.screenY }
+    const b = petWin.getBounds()
+    petPressWin = { x: b.x, y: b.y }
+    if (is.dev) console.log(`[pet-press] 按压开始 @${p.screenX},${p.screenY} win=${b.x},${b.y}`)
+  })
+
+  ipcMain.on(IPC.petPressEnd, () => {
+    petPressing = false
+  })
+
   // 走动/拖拽/下落的窗口移动：渲染层已按帧节流（16ms）。用 setBounds 钉死尺寸——
-  // Windows 上对 transparent 窗口反复 setPosition 会因 DPI 取整累积漂移（越拖越大）
+  // Windows 上对 transparent 窗口反复 setPosition 会因 DPI 取整累积漂移（越拖越大）。
+  // 但 setBounds 会打断 setIgnoreMouseEvents 的 forward 消息转发（真实鼠标事件不再
+  // 抵达渲染层），因此每次移动后按当前穿透态重断言一次。
   ipcMain.on(IPC.petMoveWindow, (_e, payload: { x: number; y: number }) => {
     if (petWin && petWin.isVisible()) {
       const size = getPinnedPetSize()
@@ -205,6 +285,7 @@ function registerIpc(): void {
         width: size.width,
         height: size.height
       })
+      petWin.setIgnoreMouseEvents(petMouseIgnored, { forward: true })
     }
   })
 
@@ -411,6 +492,7 @@ if (!app.requestSingleInstanceLock()) {
       }
     )
     startScheduler()
+    startPetHitPoller()
 
     // 开机自启（设置页 T12 提供开关，此处按存量设置应用）
     app.setLoginItemSettings({ openAtLogin: getSettings().autostart })

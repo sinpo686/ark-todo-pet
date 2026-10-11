@@ -8,6 +8,7 @@
  *   并把命中判定切到 Spine 骨骼包围盒（skeleton.getBounds；取不到回落固定 200×300）。
  * - 监听 window mousemove（50ms 节流 + trailing 兜底），命中状态翻转时调用
  *   window.api.petSetMouseIgnore(!inside)：命中角色 -> 不穿透；空白 -> 穿透。
+ *   （穿透切换现由主进程光标轮询权威负责，渲染层只上报命中盒 petSetHitbox）
  *
  * T9 行为驱动（startBehavior 后由 pixi ticker 每帧推进，纯逻辑在 src/shared/petBehavior）：
  * - ctx.x/y 是窗口左上角的逻辑屏幕坐标：walk 沿工作区底边推进、fall 半隐式欧拉下落，
@@ -104,6 +105,20 @@ export class PetStage {
   private lastMoveSentAt = 0
   /** 拖拽期间锁定不穿透（命中翻转器暂停） */
   private pointerLocked = false
+  /** 光标停留在角色命中盒内（主进程轮询广播）：暂停自主走动，方便抓取 */
+  private cursorNear = false
+
+  setCursorNear(near: boolean): void {
+    this.cursorNear = near
+  }
+
+  /** 光标靠近时若正在走动则立即停下（窗口静止才能稳定接收点击） */
+  stopWalkIfWalking(): void {
+    if (this.ctx?.action === 'walk') {
+      this.setAction('idle', performance.now())
+      console.log('[behavior] 光标靠近 -> 停步待命')
+    }
+  }
   // 指针手势状态
   private ptrDown: { x: number; y: number; t: number } | null = null
   private ptrDownScreen: { x: number; y: number } | null = null
@@ -279,7 +294,20 @@ export class PetStage {
       return
     }
 
-    // 2) 拖拽：由指针事件逐事件驱动（pointermove 即时 setPosition），tick 不插手
+    // 2) 拖拽：真实输入由主进程光标轮询驱动窗口（本页收不到 pointermove），
+    //    tick 用 window 实际屏幕位置同步 ctx 与 drag 视觉；合成事件（冒烟）走 pointermove 路径
+    if (this.ptrDown) {
+      const dx = window.screenX - this.ctx.x
+      const dy = window.screenY - this.ctx.y
+      if (!this.grabbing && Math.hypot(dx, dy) >= DRAG_PX) {
+        this.grabbing = true
+        this.setAction('drag', now)
+      }
+      if (this.grabbing) {
+        this.ctx = { ...this.ctx, x: window.screenX, y: window.screenY }
+        return
+      }
+    }
     if (this.ctx.action === 'drag') return
 
     // 3) 走动：沿工作区底边推进，越界贴边翻转（scale.x 随 facing 翻转镜像）
@@ -308,8 +336,8 @@ export class PetStage {
       this.setAction('idle', now)
     }
 
-    // 6) 自主决策（idle ↔ walk，500ms 一拍；sit 持续期间不自主转移）
-    if (!this.sitHeld && now - this.lastDecisionAt >= DECISION_MS) {
+    // 6) 自主决策（idle ↔ walk，500ms 一拍；sit/光标在身期间不自主转移——伸手抓她时她不走开）
+    if (!this.sitHeld && !this.cursorNear && now - this.lastDecisionAt >= DECISION_MS) {
       this.lastDecisionAt = now
       const a = this.ctx.action
       if (a === 'idle' || a === 'walk') {
@@ -402,11 +430,13 @@ export class PetStage {
     return this.restFloorY ?? wa.top + wa.height - window.innerHeight
   }
 
-  /** 拖拽目标钳制在工作区内（防拖出屏幕找回不回） */
+  /** 拖拽目标钳制在完整工作区内（防拖出屏幕找回不回）。
+   *  注意 y 的下界用工作区底边而非行走层 floorY——拖拽可任意上下（否则往下拖
+   *  超过当前停留高度会被钳住，表现为"不能上下移动"）；行走层只约束走动/下落 */
   private clampToWorkArea(x: number, y: number): { x: number; y: number } {
     const b = this.walkBounds()
     const wa = this.workArea()
-    const maxY = this.floorY()
+    const maxY = wa.top + wa.height - window.innerHeight
     return {
       x: Math.min(Math.max(x, b.minX), Math.max(b.minX, b.maxX)),
       y: Math.min(Math.max(y, wa.top), Math.max(wa.top, maxY))
@@ -428,6 +458,11 @@ export class PetStage {
     if (e.button !== 0) return
     // 只响应落在角色身上的按压：不穿透窗口矩形内的空白区域不触发任何交互
     if (!this.hitTestSpineBounds(e.clientX, e.clientY)) return
+    // 按下即锁定不穿透（拖动中光标可能移出命中盒，主进程轮询不得中途开穿透掐断事件流）
+    this.setPointerLocked(true)
+    // 真实 pointermove 不投递（透明窗限制）：按压上报主进程，由其轮询光标驱动窗口跟随；
+    // 本页 ticker 用 window.screenX/Y 同步视觉与 ctx
+    window.api.petPressBegin(e.screenX, e.screenY)
     // 双击消歧（计划 §4.3）：300ms 窗口内的下一次有效按压取消挂起的单击派发
     if (this.pendingClickTimer !== null) {
       this.cancelPendingClick()
@@ -460,19 +495,25 @@ export class PetStage {
 
   private readonly onPointerUp = (e: PointerEvent): void => {
     const down = this.ptrDown
+    const downScreen = this.ptrDownScreen
+    const hadDown = down !== null
     this.ptrDown = null
     this.ptrDownScreen = null
+    window.api.petPressEnd() // 主进程停止光标跟随
     if (this.destroyed || !this.ctx) return
     if (this.grabbing) {
-      // 松手：自由落体（vy 已在 setAction 清零）
+      // 松手：拖到哪停在哪（endDrag 内部解锁 + ctx 已由 ticker 同步窗口实际位置）
       this.endDrag()
       return
     }
-    if (!down) return
-    const up = { x: e.clientX, y: e.clientY, t: performance.now() }
+    if (hadDown) this.setPointerLocked(false) // 未成拖拽的点击：解除按压锁
+    if (!down || !downScreen) return
+    // 用屏幕坐标判定位移：真实拖动时窗口跟随指针，client 坐标几乎不动（会误判 click）
+    const up = { x: e.screenX, y: e.screenY, t: performance.now() }
+    const downForClassify = { x: downScreen.x, y: downScreen.y, t: down.t }
     // 双击窗口：上一次 click 的抬起 → 本次按下，间隔 < 300ms
     const second = this.lastClickUpAt > 0 && down.t - this.lastClickUpAt < DOUBLE_MS
-    const kind = classifyPointer(down, up, second)
+    const kind = classifyPointer(downForClassify, up, second)
     if (kind === 'click') {
       this.lastClickUpAt = up.t
       // 计划 §4.3：单击延迟 300ms 派发，等待双击判定窗口；窗口内的下一次有效
@@ -493,11 +534,9 @@ export class PetStage {
         this.hooks?.onInteract?.()
       } else {
         // 位移超阈值但未经 pointermove 预热（极端/合成场景）：按位移平移窗口后停在落点
-        console.log('[pet-pointer] classify=drag（无 move 预热）-> 平移并停留')
-        const target = this.clampToWorkArea(
-          this.ctx.x + (up.x - down.x),
-          this.ctx.y + (up.y - down.y)
-        )
+        console.log('[pet-pointer] classify=drag（无 move 预热）-> 停留窗口实际位置')
+        // 真实拖动由主进程驱动窗口（client 位移≈0），以窗口实际屏幕位置为准
+        const target = this.clampToWorkArea(window.screenX, window.screenY)
         this.ctx = { ...this.ctx, x: target.x, y: target.y }
         this.restFloorY = target.y
         this.sendMove(target.x, target.y, true)
@@ -509,16 +548,22 @@ export class PetStage {
   private readonly onPointerCancel = (): void => {
     this.ptrDown = null
     this.ptrDownScreen = null
-    if (this.grabbing) this.endDrag()
+    window.api.petPressEnd()
+    if (this.grabbing) {
+      this.endDrag()
+    } else if (this.pointerLocked) {
+      this.setPointerLocked(false)
+    }
   }
 
   private endDrag(): void {
     this.grabbing = false
     this.setPointerLocked(false)
-    // 用户指令：拖到哪停在哪（不再坠回屏幕底边）——落点成为新的行走层
+    // 用户指令：拖到哪停在哪。真实拖动由主进程驱动窗口，ctx 可能滞后——
+    // 以窗口实际屏幕位置为准（否则 force sendMove 会把窗口弹回旧位置）
     if (this.ctx) {
+      this.ctx = { ...this.ctx, x: window.screenX, y: window.screenY }
       this.restFloorY = this.ctx.y
-      this.sendMove(this.ctx.x, this.ctx.y, true)
     }
     this.setAction('idle', performance.now())
   }
@@ -536,10 +581,11 @@ export class PetStage {
     this.pointerLocked = lock
     if (lock) {
       this.inside = true
-      window.api.petSetMouseIgnore(false)
+      window.api.petSetPointerLock(true)
     } else {
       this.inside = false
-      this.evaluate(performance.now(), true)
+      window.api.petSetPointerLock(false)
+      // 主进程轮询下一拍（33ms 内）按光标位置恢复正确穿透态
     }
   }
 
@@ -565,6 +611,7 @@ export class PetStage {
     const facing = this.ctx?.facing ?? 1
     spine.scale.set(scale * facing, scale)
     spine.position.set(screen.width / 2, screen.height - GROUND_MARGIN + this.animOffsetY)
+    this.reportHitbox()
   }
 
   /** 当前姿势的骨骼包围盒（spine 本地坐标，y 向上为负）；无附件时返回 null */
@@ -652,14 +699,47 @@ export class PetStage {
     }
   }
 
-  /** 命中评估；force=true 时无视「无翻转不发」约定（拖拽解锁后校正悬挂的 ignore 态） */
-  private evaluate(now: number, force = false): void {
+  /** 命中评估（仅维护本地 inside 视觉态；穿透切换由主进程光标轮询权威负责——
+   *  实测 setIgnoreMouseEvents 的 forward 转发在透明窗 + setBounds 后不再投递真实
+   *  mousemove 到渲染层，此处翻转不可靠，已弃用发送） */
+  private evaluate(now: number, _force = false): void {
     this.lastRunAt = now
-    if (this.pointerLocked) return // 拖拽锁定期不翻转
+    if (this.pointerLocked) return
     const inside = this.hitTest !== null ? this.hitTest(this.pendingX, this.pendingY) : false
-    if (inside === this.inside && !force) return // 仅布尔值翻转时发送，避免 IPC 洪水
-    this.inside = inside
-    console.log(`[PetStage] hit=${inside} -> petSetMouseIgnore(${!inside})`)
-    window.api.petSetMouseIgnore(!inside)
+    if (inside !== this.inside) {
+      this.inside = inside
+    }
+  }
+
+  /** 向主进程上报角色命中盒（视口坐标）；布局/模型/尺寸变化时调用 */
+  private reportHitbox(): void {
+    const spine = this.spine
+    if (!spine) {
+      window.api.petSetHitbox({ x: 0, y: 0, w: 0, h: 0 })
+      return
+    }
+    const b = this.measureBounds()
+    if (!b) {
+      // 兜底：挂载点上方固定 200×300
+      window.api.petSetHitbox({
+        x: spine.x - 100,
+        y: spine.y - 300,
+        w: 200,
+        h: 300
+      })
+      return
+    }
+    const sx = spine.scale.x
+    const sy = spine.scale.y
+    const xa = spine.x + b.x * sx
+    const xb = spine.x + (b.x + b.width) * sx
+    const ya = spine.y + b.y * sy
+    const yb = spine.y + (b.y + b.height) * sy
+    window.api.petSetHitbox({
+      x: Math.min(xa, xb),
+      y: Math.min(ya, yb),
+      w: Math.abs(xb - xa),
+      h: Math.abs(yb - ya)
+    })
   }
 }

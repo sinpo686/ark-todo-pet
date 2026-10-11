@@ -17,6 +17,25 @@ const api = {
   petMoveWindow(x: number, y: number): void {
     ipcRenderer.send(IPC.petMoveWindow, { x, y })
   },
+  petSetHitbox(box: { x: number; y: number; w: number; h: number }): void {
+    ipcRenderer.send(IPC.petSetHitbox, box)
+  },
+  petSetPointerLock(locked: boolean): void {
+    ipcRenderer.send(IPC.petSetPointerLock, { locked })
+  },
+  petPressBegin(screenX: number, screenY: number): void {
+    ipcRenderer.send(IPC.petPressBegin, { screenX, screenY })
+  },
+  petPressEnd(): void {
+    ipcRenderer.send(IPC.petPressEnd)
+  },
+  onPetCursorNear(cb: (near: boolean) => void): () => void {
+    const listener = (_e: Electron.IpcRendererEvent, near: boolean): void => cb(near)
+    ipcRenderer.on(IPC.petCursorNear, listener)
+    return (): void => {
+      ipcRenderer.removeListener(IPC.petCursorNear, listener)
+    }
+  },
   openTodoPanel(): void {
     ipcRenderer.send(IPC.openTodoPanel)
   },

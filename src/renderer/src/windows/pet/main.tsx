@@ -123,6 +123,11 @@ function PetWindow(): React.JSX.Element {
       stage.setMood(mood)
       moodRef.current = mood
     })
+    // 光标在角色身上：暂停自主走动并立即停步（否则她带着窗口走开，穿透翻转与点击全失效）
+    const offCursorNear = window.api.onPetCursorNear((near) => {
+      stage.setCursorNear(near)
+      if (near) stage.stopWalkIfWalking()
+    })
     // 番茄钟：focus 期间强制坐姿，rest/idle 解除；相位切换时气泡提醒（T11）
     let prevPhase: PomoState['phase'] | null = null
     const offPomo = window.api.onPomoChanged((s) => {
@@ -291,6 +296,7 @@ function PetWindow(): React.JSX.Element {
       disposed = true
       selfCheckTimers.forEach((t) => window.clearTimeout(t))
       offMood()
+      offCursorNear()
       offPomo()
       offRemind()
       offModelChanged()
