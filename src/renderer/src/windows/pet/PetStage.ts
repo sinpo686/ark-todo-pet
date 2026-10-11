@@ -14,7 +14,8 @@
  *   位置变化经 hooks.onWindowMove 节流（16ms）回传（渲染层 → IPC petMoveWindow → setPosition）；
  * - 指针手势（画布 pointerdown/move/up + setPointerCapture）：≥8px 即入 drag（窗口跟手、
  *   固定不穿透），松手 fall 落地回 idle；<8px 由 classifyPointer 分 click/double ——
- *   click → hooks.onPointerClick（开待办面板），double → interact 动画；
+ *   click 延迟 300ms 派发 hooks.onPointerClick（开待办面板，双击窗口内的下一次按压取消
+ *   挂起派发，计划 §4.3），double → interact 动画；
  * - sit 由番茄钟外部注入（holdSit(true/false)），remind 由提醒事件注入（triggerRemind）。
  */
 
@@ -105,6 +106,8 @@ export class PetStage {
   private grabDY = 0
   /** 上一次判定为 click 的抬起时刻（双击窗口起点） */
   private lastClickUpAt = 0
+  /** 单击 300ms 双击消歧：click 判定后挂起的 onPointerClick 派发（计划 §4.3） */
+  private pendingClickTimer: number | null = null
 
   constructor(canvasParent: HTMLElement) {
     this.app = new Application({ backgroundAlpha: 0, resizeTo: window, antialias: true })
@@ -402,6 +405,11 @@ export class PetStage {
     if (e.button !== 0) return
     // 只响应落在角色身上的按压：不穿透窗口矩形内的空白区域不触发任何交互
     if (!this.hitTestSpineBounds(e.clientX, e.clientY)) return
+    // 双击消歧（计划 §4.3）：300ms 窗口内的下一次有效按压取消挂起的单击派发
+    if (this.pendingClickTimer !== null) {
+      this.cancelPendingClick()
+      console.log('[pet-pointer] 双击窗口内按下 -> 取消挂起的单击派发')
+    }
     this.ptrDown = { x: e.clientX, y: e.clientY, t: performance.now() }
     this.ptrDownScreen = { x: e.screenX, y: e.screenY }
     try {
@@ -444,12 +452,20 @@ export class PetStage {
     const kind = classifyPointer(down, up, second)
     if (kind === 'click') {
       this.lastClickUpAt = up.t
-      console.log('[pet-pointer] classify=click -> openTodoPanel')
-      this.hooks?.onPointerClick()
+      // 计划 §4.3：单击延迟 300ms 派发，等待双击判定窗口；窗口内的下一次有效
+      // pointerdown（onPointerDown）会取消挂起 —— 双击的第一击不再弹出待办面板
+      this.cancelPendingClick()
+      console.log('[pet-pointer] classify=click -> 挂起 300ms 派发（双击消歧）')
+      this.pendingClickTimer = window.setTimeout(() => {
+        this.pendingClickTimer = null
+        console.log('[pet-pointer] 单击确认（300ms 无二次按压）-> onPointerClick')
+        this.hooks?.onPointerClick()
+      }, DOUBLE_MS)
     } else {
       this.lastClickUpAt = 0
+      this.cancelPendingClick()
       if (kind === 'double') {
-        console.log('[pet-pointer] classify=double -> interact')
+        console.log('[pet-pointer] classify=double -> interact（第一击的单击派发已取消）')
         this.setAction('interact', performance.now())
       } else {
         // 位移超阈值但未经 pointermove 预热（极端/合成场景）：按位移平移窗口后下落
@@ -475,6 +491,14 @@ export class PetStage {
     this.grabbing = false
     this.setPointerLocked(false)
     this.setAction('fall', performance.now())
+  }
+
+  /** 取消挂起的单击派发（双击窗口内的下一次按压 / 双击判定成立 / 销毁） */
+  private cancelPendingClick(): void {
+    if (this.pendingClickTimer !== null) {
+      window.clearTimeout(this.pendingClickTimer)
+      this.pendingClickTimer = null
+    }
   }
 
   /** 拖拽锁定：固定不穿透；解锁时重置命中态并按最后已知鼠标位置强制重评估 */
@@ -561,6 +585,7 @@ export class PetStage {
     this.destroyed = true
     this.ctx = null
     this.spine = null
+    this.cancelPendingClick()
     this.cancelTrailing()
     window.removeEventListener('mousemove', this.onMouseMove)
     const view = this.app.view as unknown as HTMLCanvasElement

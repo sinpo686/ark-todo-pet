@@ -23,13 +23,19 @@ function PetWindow(): React.JSX.Element {
     let disposed = false
     const stage = new PetStage(host)
 
-    // T9 行为接线：单击 → 待办面板；窗口移动 → 主进程 setPosition（渲染层已节流）
+    // T9 行为接线：单击 → 待办面板（PetStage 内已做 300ms 双击消歧延迟派发，计划 §4.3）；
+    // 窗口移动 → 主进程 setPosition（渲染层已节流）。clickDispatchCount 供 dev 冒烟取证
+    let clickDispatchCount = 0
     let behaviorStarted = false
     const startBehavior = (): void => {
       if (behaviorStarted || disposed) return
       behaviorStarted = true
       stage.startBehavior({
-        onPointerClick: (): void => window.api.openTodoPanel(),
+        onPointerClick: (): void => {
+          clickDispatchCount++
+          console.log(`[pet] onPointerClick -> openTodoPanel（第 ${clickDispatchCount} 次）`)
+          window.api.openTodoPanel()
+        },
         onWindowMove: (x, y): void => window.api.petMoveWindow(x, y)
       })
     }
@@ -75,12 +81,16 @@ function PetWindow(): React.JSX.Element {
     // 待办提醒：special 动画一次
     const offRemind = window.api.onRemindTrigger(() => stage.triggerRemind())
 
-    // dev 冒烟自检（T8 命中穿透 + T9 指针/行为路由）：
-    // 2.5s/2.7s 矩形内/外 mousemove → 主进程 [ipc] pet:set-mouse-ignore 翻转；
-    // 4s   pointerdown/up 原地点击 → classify=click → openTodoPanel（主进程 [windows] todo 面板已创建）；
+    // dev 冒烟自检（T8 命中穿透 + T9 指针/行为路由 + §4.3 单击双击消歧）：
+    // 2.5s/2.7s  矩形内/外 mousemove → 主进程 [ipc] pet:set-mouse-ignore 翻转；
+    // 4s   pointerdown/up 原地点击 → classify=click 挂起；
+    // 4.5s 取证：300ms 已过 → [pet-pointer] 单击确认 + [pet] onPointerClick（计数=1），
+    //            主进程 [windows] todo 面板已创建；
     // 6s   按下 + 上移 50px + 松开 → drag（拎起）→ fall → idle（落地）；
     // 8s   forceAction('walk') → [behavior] action=idle -> walk，窗口沿底边移动；
-    // 10s  连两次快速点击 → 第一击 click（面板聚焦），第二击 classify=double → interact。
+    // 10s/10.15s 连两次快速点击 → 第一击挂起被第二击 down 取消（无单击确认日志），
+    //            第二击 classify=double → interact；
+    // 10.7s 取证：单击派发计数仍=1（双击未弹面板）。
     const selfCheckTimers: number[] = []
     if (import.meta.env.DEV) {
       const petPoint = (): { x: number; y: number } => ({
@@ -132,13 +142,18 @@ function PetWindow(): React.JSX.Element {
         at(2700, () =>
           window.dispatchEvent(new MouseEvent('mousemove', { clientX: 2, clientY: 2 }))
         ),
-        // T9 click → openTodoPanel
+        // T9 click → 挂起；4.5s 取证 300ms 延迟派发（单击 → openTodoPanel）
         at(4000, () =>
           whenReady(() => {
             const p = petPoint()
             firePointer('pointerdown', p.x, p.y)
             firePointer('pointerup', p.x, p.y)
           })()
+        ),
+        at(4500, () =>
+          console.log(
+            `[smoke] 单击取证：派发计数=${clickDispatchCount}（期望=1，300ms 延迟已过应已派发）`
+          )
         ),
         // T9 drag → fall → idle
         at(6000, () =>
@@ -163,7 +178,7 @@ function PetWindow(): React.JSX.Element {
             stage.forceAction('walk')
           })()
         ),
-        // T9 double → interact
+        // T9 double → interact（第一击挂起派发被第二击 down 取消）
         at(10000, () =>
           whenReady(() => {
             const p = petPoint()
@@ -177,6 +192,12 @@ function PetWindow(): React.JSX.Element {
             firePointer('pointerdown', p.x, p.y)
             firePointer('pointerup', p.x, p.y)
           })()
+        ),
+        // 双击序列后 300ms+ 取证：计数未增长 → 双击未弹面板
+        at(10700, () =>
+          console.log(
+            `[smoke] 双击取证：派发计数=${clickDispatchCount}（期望仍=1，第一击派发已被取消）`
+          )
         )
       )
     }
