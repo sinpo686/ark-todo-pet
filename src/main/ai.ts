@@ -79,7 +79,11 @@ export function createAiService(deps: AiServiceDeps): {
 
   const trimHistory = (): void => {
     if (history.length > MAX_HISTORY) {
-      history = history.slice(-MAX_HISTORY)
+      let start = history.length - MAX_HISTORY
+      // 不能从 tool 消息上切开（其发起的 assistant(tool_calls) 被裁掉后，孤儿 tool
+      // 消息会被 OpenAI 兼容接口 400 拒绝，连续 3 次即触发会话熔断）
+      while (start < history.length && history[start].role === 'tool') start++
+      history = history.slice(start)
     }
   }
 

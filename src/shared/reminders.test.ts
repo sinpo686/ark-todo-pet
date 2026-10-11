@@ -52,7 +52,7 @@ describe('decideReminders 触发规则', () => {
   it('lead 已提醒过且仍在 lead 窗口 → 无事件', () => {
     const dueAt = NOW + 30 * MIN
     expect(
-      decideReminders([mk({ id: 'a', dueAt })], NOW + 5 * MIN, new Set(['a:lead']), 10)
+      decideReminders([mk({ id: 'a', dueAt })], NOW + 25 * MIN, new Set(['a:lead']), 10)
     ).toEqual([])
   })
 

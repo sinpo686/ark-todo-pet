@@ -1,14 +1,53 @@
 /** 持久化外壳：todos（写前轮换备份）、设置、番茄钟每日计数。所有磁盘 IO 集中于此。 */
 
-import { app } from 'electron'
+import { app, dialog } from 'electron'
 import { join } from 'path'
 import { copyFile } from 'fs/promises'
-import { existsSync } from 'fs'
+import { existsSync, copyFileSync, renameSync } from 'fs'
 import ElectronStore from 'electron-store'
 import { randomUUID } from 'crypto'
 import type { Todo } from '../shared/types'
 
-const todosStore = new ElectronStore<{ todos: Todo[] }>({ name: 'todos', defaults: { todos: [] } })
+/**
+ * todos.json 的 electron-store：构造期会同步读取并 JSON.parse 主文件——
+ * 文件损坏时构造直接抛错（主进程崩溃且重启循环）。因此：
+ * 1) 构造失败 → 用 todos.json.bak 恢复主文件后重试；
+ * 2) 仍失败 → 把坏文件改名为 .corrupt-<ts> 隔离，重建空库，并弹窗告知。
+ */
+function createTodosStore(): ElectronStore<{ todos: Todo[] }> {
+  const opts = { name: 'todos', defaults: { todos: [] as Todo[] } } as const
+  try {
+    return new ElectronStore<{ todos: Todo[] }>(opts)
+  } catch (err) {
+    console.error('[store] todos.json 损坏，尝试 .bak 恢复:', String(err))
+    const mainPath = join(app.getPath('userData'), 'todos.json')
+    const bakPath = join(app.getPath('userData'), 'todos.json.bak')
+    try {
+      if (existsSync(bakPath)) {
+        copyFileSync(bakPath, mainPath)
+        return new ElectronStore<{ todos: Todo[] }>(opts)
+      }
+    } catch (err2) {
+      console.error('[store] .bak 恢复失败:', String(err2))
+    }
+    try {
+      renameSync(mainPath, `${mainPath}.corrupt-${Date.now()}`)
+    } catch {
+      /* 主文件不存在等情况 */
+    }
+    try {
+      dialog.showErrorBox(
+        '待办数据已重置',
+        'todos.json 损坏且备份不可用，已将坏文件隔离为 todos.json.corrupt-* 并重建空清单。'
+      )
+    } catch {
+      /* app 未就绪时静默 */
+    }
+    return new ElectronStore<{ todos: Todo[] }>(opts)
+  }
+}
+
+const todosStore = createTodosStore()
 
 export interface AiConfig {
   baseUrl: string

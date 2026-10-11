@@ -7,19 +7,34 @@ import { getSettings, setSetting } from './store'
 
 export const PET_SIZE = { width: 300, height: 360 }
 
+/**
+ * 桌宠窗口的钉死尺寸：Windows 上对 transparent 窗口反复 setPosition 会因 DPI
+ * 取整累积漂移（探针实测 184→190+ 持续变大），因此移动一律走 setBounds 并
+ * 每次带上该固定尺寸；仅 applyPetScale（用户改缩放）与建窗允许改变它。
+ */
+let petPinnedSize: { width: number; height: number } = { ...PET_SIZE }
+
+export function getPinnedPetSize(): { width: number; height: number } {
+  return { ...petPinnedSize }
+}
+
 /** 缩放安全边界（与设置页滑杆 0.5–2.0 一致） */
 export function clampScale(scale: number): number {
   if (!Number.isFinite(scale) || scale <= 0) return 1
   return Math.min(2, Math.max(0.5, scale))
 }
 
-/** 应用桌宠缩放：重设窗口尺寸并保持底部锚定（模型按窗口高度自适应） */
+/** 应用桌宠缩放：重设窗口尺寸并保持底部锚定（模型按窗口高度自适应）；同时更新钉死尺寸 */
 export function applyPetScale(petWin: BrowserWindow, scale: number): void {
   const s = clampScale(scale)
   const bounds = petWin.getBounds()
-  const w = Math.round(PET_SIZE.width * s)
-  const h = Math.round(PET_SIZE.height * s)
-  petWin.setBounds({ x: bounds.x, y: bounds.y + (bounds.height - h), width: w, height: h })
+  petPinnedSize = { width: Math.round(PET_SIZE.width * s), height: Math.round(PET_SIZE.height * s) }
+  petWin.setBounds({
+    x: bounds.x,
+    y: bounds.y + (bounds.height - petPinnedSize.height),
+    width: petPinnedSize.width,
+    height: petPinnedSize.height
+  })
 }
 
 function loadWindowPage(win: BrowserWindow, page: 'pet' | 'todo' | 'settings'): void {
@@ -42,9 +57,10 @@ export function createPetWindow(): BrowserWindow {
   const settings = getSettings()
   const { width: screenW, height: screenH } = screen.getPrimaryDisplay().workAreaSize
   const scale = clampScale(settings.petScale)
+  petPinnedSize = { width: Math.round(PET_SIZE.width * scale), height: Math.round(PET_SIZE.height * scale) }
   const win = new BrowserWindow({
-    width: Math.round(PET_SIZE.width * scale),
-    height: Math.round(PET_SIZE.height * scale),
+    width: petPinnedSize.width,
+    height: petPinnedSize.height,
     x: settings.petX ?? Math.floor(screenW * 0.7),
     y: settings.petY ?? Math.floor(screenH - PET_SIZE.height * scale),
     frame: false,

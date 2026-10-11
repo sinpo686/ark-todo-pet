@@ -6,6 +6,7 @@ import { IPC } from '../shared/ipc'
 import type { TodosMutateMsg, AppSettingsShape } from '../shared/ipc'
 import type { Todo, Priority } from '../shared/types'
 import { addTodo, toggleTodo, editTodo, deleteTodo } from '../shared/todoStore'
+import { groupTodos } from '../shared/todoStore'
 import { computeMood } from '../shared/mood'
 import type { Mood } from '../shared/mood'
 import { decideReminders } from '../shared/reminders'
@@ -29,7 +30,8 @@ import {
   openSettingsWindow,
   broadcast,
   sendToPet,
-  applyPetScale
+  applyPetScale,
+  getPinnedPetSize
 } from './windows'
 import { createTray } from './tray'
 import type { TrayWithRefresh } from './tray'
@@ -127,6 +129,7 @@ async function mutateTodos(msg: TodosMutateMsg): Promise<void> {
   await saveTodos(todos)
   broadcastTodos()
   broadcastMood()
+  trayRef?.refresh() // 托盘徽标计数随待办更新（规格 §5.2）
 }
 
 // ---------- 提醒与番茄钟调度（30s 一拍；纯逻辑见 src/shared） ----------
@@ -188,11 +191,17 @@ function registerIpc(): void {
     petWin?.setIgnoreMouseEvents(payload.ignore, { forward: true })
   })
 
-  // 走动/拖拽/下落的窗口移动：渲染层已按帧节流（16ms），主进程只做一次 setPosition；
-  // 窗口隐藏（托盘收起）时丢弃，避免隐形走动造成屏幕坐标与窗口位置失步
+  // 走动/拖拽/下落的窗口移动：渲染层已按帧节流（16ms）。用 setBounds 钉死尺寸——
+  // Windows 上对 transparent 窗口反复 setPosition 会因 DPI 取整累积漂移（越拖越大）
   ipcMain.on(IPC.petMoveWindow, (_e, payload: { x: number; y: number }) => {
     if (petWin && petWin.isVisible()) {
-      petWin.setPosition(Math.round(payload.x), Math.round(payload.y), false)
+      const size = getPinnedPetSize()
+      petWin.setBounds({
+        x: Math.round(payload.x),
+        y: Math.round(payload.y),
+        width: size.width,
+        height: size.height
+      })
     }
   })
 
@@ -349,6 +358,11 @@ if (!app.requestSingleInstanceLock()) {
         getCurrent: () => getSettings().currentModel,
         onSwitchModel: (dir: string): void => {
           setCurrentModel(dir).catch((err) => console.error('[tray] 切换模型失败:', String(err)))
+        },
+        getTodoCounts: (): { open: number; overdue: number } => {
+          const now = Date.now()
+          const g = groupTodos(todos, now)
+          return { open: g.overdue.length + g.upcoming.length + g.undated.length, overdue: g.overdue.length }
         }
       }
     )

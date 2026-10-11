@@ -14,6 +14,8 @@ export interface TrayModelHooks {
   getCurrent: () => string | null
   /** 切换模型 */
   onSwitchModel: (dir: string) => void
+  /** 待办计数（徽标菜单行：未完成/逾期） */
+  getTodoCounts: () => { open: number; overdue: number }
 }
 
 export function createTray(
@@ -41,6 +43,13 @@ export function createTray(
       { type: 'separator' },
       { label: '退出', click: (): void => app.quit() }
     ]
+    if (modelHooks) {
+      // 规格 §5.2：托盘显示未完成/逾期计数（点击跳待办）
+      const c = modelHooks.getTodoCounts()
+      const badge =
+        c.overdue > 0 ? `待办 ${c.open} 条（逾期 ${c.overdue}）` : c.open > 0 ? `待办 ${c.open} 条` : '待办全部完成 🎉'
+      template.splice(1, 0, { label: `📋 ${badge}`, click: onOpenTodo })
+    }
     if (modelHooks) {
       // 切换干员子菜单：菜单构建是同步的，模型清单用上次缓存（refresh 时重建）
       const current = modelHooks.getCurrent()
