@@ -61,6 +61,9 @@ function PetWindow(): React.JSX.Element {
       })
     }
 
+    /** 已尝试过的模型（回退链防死循环） */
+    const triedModels = new Set<string>()
+
     const loadEntry = async (
       target: { dir: string; skel?: string; mapping?: Partial<Record<string, string>> } | undefined
     ): Promise<void> => {
@@ -70,6 +73,7 @@ function PetWindow(): React.JSX.Element {
         setSpineState('no-model')
         return
       }
+      triedModels.add(target.dir)
       try {
         await stage.loadSpine(target.dir, target.skel, target.mapping)
         if (disposed) return
@@ -78,6 +82,15 @@ function PetWindow(): React.JSX.Element {
       } catch (err) {
         console.error('[pet] Spine 加载失败:', err)
         if (disposed) return
+        // 规格 §8：当前模型加载失败 → 回退到其余本地可用模型；全部失败才显示错误文案
+        const fallback = await window.api
+          .modelsListLocal()
+          .then((models) => models.find((m) => m.skel && !triedModels.has(m.dir)))
+          .catch(() => undefined)
+        if (fallback) {
+          console.warn(`[pet] 回退到下一个可用模型: ${fallback.dir}（${fallback.name}）`)
+          return loadEntry(fallback)
+        }
         setSpineError(String(err))
         setSpineState('failed')
       }
