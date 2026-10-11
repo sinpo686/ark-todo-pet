@@ -28,6 +28,7 @@ import {
   openTodoPanel,
   setPanelPinned,
   openSettingsWindow,
+  openChatWindow,
   broadcast,
   sendToPet,
   applyPetScale,
@@ -231,6 +232,10 @@ function registerIpc(): void {
 
   ipcMain.on(IPC.openSettings, () => {
     openSettingsWindow()
+  })
+
+  ipcMain.on(IPC.openChat, () => {
+    if (petWin) openChatWindow(petWin)
   })
 
   ipcMain.handle('todos:get', (): Todo[] => todos)

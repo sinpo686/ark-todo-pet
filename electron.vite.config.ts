@@ -18,6 +18,7 @@ export default defineConfig({
           index: resolve('src/renderer/index.html'),
           pet: resolve('src/renderer/src/windows/pet/index.html'),
           todo: resolve('src/renderer/src/windows/todo/index.html'),
+          chat: resolve('src/renderer/src/windows/chat/index.html'),
           settings: resolve('src/renderer/src/windows/settings/index.html')
         }
       }

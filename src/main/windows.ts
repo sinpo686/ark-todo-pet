@@ -37,7 +37,7 @@ export function applyPetScale(petWin: BrowserWindow, scale: number): void {
   })
 }
 
-function loadWindowPage(win: BrowserWindow, page: 'pet' | 'todo' | 'settings'): void {
+function loadWindowPage(win: BrowserWindow, page: 'pet' | 'todo' | 'chat' | 'settings'): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/src/windows/${page}/index.html`)
   } else {
@@ -152,6 +152,52 @@ let panelPinned = false
 
 export function setPanelPinned(pinned: boolean): void {
   panelPinned = pinned
+}
+
+let chatWin: BrowserWindow | null = null
+
+/**
+ * 干员通讯（T13 修正）：独立小窗而非桌宠窗口内嵌层——内嵌会被小缩放的窗口裁切，
+ * 且桌宠的鼠标穿透按角色命中盒开启，聊天层点不到也打不了字。
+ */
+export function openChatWindow(petWin: BrowserWindow): void {
+  if (!chatWin || chatWin.isDestroyed()) {
+    chatWin = new BrowserWindow({
+      width: 300,
+      height: 420,
+      show: false,
+      frame: false,
+      resizable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      webPreferences: baseWebPrefs()
+    })
+    chatWin.on('closed', () => {
+      chatWin = null
+    })
+    if (is.dev) {
+      chatWin.webContents.on('console-message', (_event, ...args) => {
+        console.log('[chat-console]', ...args)
+      })
+    }
+    loadWindowPage(chatWin, 'chat')
+    console.log('[windows] chat 窗口已创建（懒）')
+  }
+  if (chatWin) {
+    const petBounds = petWin.getBounds()
+    const w = 300
+    const h = 420
+    const workArea = screen.getDisplayMatching(petBounds).workArea
+    let x = petBounds.x + petBounds.width + 8
+    if (x + w > workArea.x + workArea.width) x = petBounds.x - w - 8
+    if (x < workArea.x) x = workArea.x
+    let y = petBounds.y
+    if (y + h > workArea.y + workArea.height) y = workArea.y + workArea.height - h
+    if (y < workArea.y) y = workArea.y
+    chatWin.setPosition(x, y, false)
+    chatWin.show()
+    chatWin.focus()
+  }
 }
 
 let settingsWin: BrowserWindow | null = null

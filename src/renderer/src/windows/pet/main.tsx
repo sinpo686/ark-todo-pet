@@ -8,7 +8,6 @@
 import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { PetStage } from './PetStage'
-import { ChatPanel } from './ChatPanel'
 import { pickLine } from '../../../../shared/lines'
 import type { BubbleMood } from '../../../../shared/lines'
 import type { PomoState } from '../../../../shared/pomodoro'
@@ -19,7 +18,6 @@ function PetWindow(): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const [spineState, setSpineState] = useState<SpineState>('loading')
   const [spineError, setSpineError] = useState('')
-  const [chatOpen, setChatOpen] = useState(false)
   // T11 气泡：同屏至多一条（新顶旧），停留 4s 淡出
   const [bubble, setBubble] = useState('')
   const bubbleTimer = useRef<number | null>(null)
@@ -52,8 +50,8 @@ function PetWindow(): React.JSX.Element {
         },
         onWindowMove: (x, y): void => window.api.petMoveWindow(x, y),
         onContextMenu: (): void => {
-          console.log('[pet] 右键 -> 切换聊天层')
-          setChatOpen((v) => !v)
+          console.log('[pet] 右键 -> 打开干员通讯（独立窗）')
+          window.api.openChat()
         },
         onInteract: (): void => {
           showBubble(pickLine('interact', moodRef.current, Math.random))
@@ -273,7 +271,7 @@ function PetWindow(): React.JSX.Element {
         ),
         // T12 冒烟：12s 打开设置窗（settings-smoke 2.5s 后自跑切换 → modelChanged 回流本页）
         at(12000, () => window.api.openSettings()),
-        // T13 冒烟：14s 右键（命中角色）→ 聊天层打开；16s 自动发一条 → 未配置 AI 的引导回复取证
+        // T13 冒烟：14s 右键（命中角色）→ 干员通讯独立窗打开（chat-smoke 在聊天窗内自跑回复取证）
         at(14000, () => {
           const canvas = document.querySelector('canvas')
           if (canvas) {
@@ -285,27 +283,6 @@ function PetWindow(): React.JSX.Element {
               })
             )
           }
-        }),
-        at(16500, () => {
-          const input = document.querySelector<HTMLInputElement>('.chat-input')
-          if (!input) {
-            console.warn('[chat-smoke] 聊天层未打开（contextmenu 未生效）')
-            return
-          }
-          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-          setter?.call(input, '冒烟测试')
-          input.dispatchEvent(new Event('input', { bubbles: true }))
-          window.setTimeout(() => {
-            input.dispatchEvent(
-              new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
-            )
-          }, 100)
-        }),
-        at(19000, () => {
-          const last = document.querySelector('.chat-list > div:last-child')
-          console.log(
-            `[chat-smoke] 最后一条消息：${last?.textContent?.slice(0, 60) ?? '（无）'}（未配置 key 时应为引导文案）`
-          )
         })
       )
     }
@@ -351,8 +328,7 @@ function PetWindow(): React.JSX.Element {
       )}
       {/* T11 头顶气泡（心情闲聊/提醒/番茄/戳一戳；同屏一条 4s） */}
       {bubble && <div className="pet-bubble">{bubble}</div>}
-      {/* T13 聊天层（右键桌宠唤起） */}
-      {chatOpen && <ChatPanel onClose={(): void => setChatOpen(false)} />}
+      {/* T13 干员通讯为独立窗口（右键唤起），不再内嵌本窗 */}
     </div>
   )
 }

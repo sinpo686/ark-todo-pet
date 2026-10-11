@@ -76,6 +76,9 @@ const api = {
   aiTest(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {
     return ipcRenderer.invoke(IPC.aiTest)
   },
+  openChat(): void {
+    ipcRenderer.send(IPC.openChat)
+  },
   chatSend(text: string): Promise<import('../shared/ipc').ChatMsgShape[]> {
     return ipcRenderer.invoke(IPC.chatSend, { text })
   },

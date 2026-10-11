@@ -28,7 +28,8 @@ export const IPC = {
   modelChanged: 'model:changed',
   aiTest: 'ai:test',
   chatSend: 'chat:send',
-  chatHistory: 'chat:history'
+  chatHistory: 'chat:history',
+  openChat: 'chat:open'
 } as const
 
 export type TodosMutateMsg =
@@ -87,6 +88,7 @@ export interface ApiShape {
   modelsSetCurrent(dir: string): Promise<void>
   onModelChanged(cb: (entry: ModelEntry) => void): () => void
   aiTest(): Promise<{ ok: boolean; latencyMs?: number; error?: string }>
+  openChat(): void
   chatSend(text: string): Promise<ChatMsgShape[]>
   chatGetHistory(): Promise<ChatMsgShape[]>
   onTodosChanged(cb: (todos: Todo[]) => void): () => void
