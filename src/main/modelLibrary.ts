@@ -193,6 +193,35 @@ async function loadRepoIndex(force = false): Promise<RepoIndex> {
   }
 }
 
+/**
+ * 规范化模型文件名中的 '#'（皮肤包如 build_char_002_amiya_epoque#4.png）：
+ * '#' 在 URL 里是 fragment 符号，纹理页 URL 会在 pixi 侧被截断（扩展名丢失 →
+ * "don't know how to parse"/"terribly wrong .atlas"）。将磁盘文件名 '#'→'_'，
+ * 并同步改写 .atlas 文本中的页引用（.skel 二进制不含文件名，安全）。
+ * 幂等：无 '#' 文件时零开销。
+ */
+async function normalizeHashNames(modelDir: string): Promise<void> {
+  const files = await fs.readdir(modelDir)
+  const renames: Array<{ from: string; to: string }> = []
+  for (const f of files) {
+    if (f.includes('#')) renames.push({ from: f, to: f.replace(/#/g, '_') })
+  }
+  if (renames.length === 0) return
+  for (const { from, to } of renames) {
+    await fs.rename(path.join(modelDir, from), path.join(modelDir, to))
+  }
+  for (const f of await fs.readdir(modelDir)) {
+    if (!f.toLowerCase().endsWith('.atlas')) continue
+    const fp = path.join(modelDir, f)
+    let txt = await fs.readFile(fp, 'utf8')
+    for (const { from, to } of renames) {
+      txt = txt.split(from).join(to)
+    }
+    await fs.writeFile(fp, txt, 'utf8')
+  }
+  console.log(`[modelLibrary] 已规范化 ${renames.length} 个含 # 的文件名（${path.basename(modelDir)}）`)
+}
+
 // ---------- 对外：本地列表 / 远端列表 / 下载 / zip 导入 ----------
 
 /** 扫描 userData/models/ 下的各模型目录：目录名 + 中文名（_meta.json → models_data.json → 目录名）+ skel 文件名 */
@@ -207,6 +236,8 @@ export async function listLocalModels(): Promise<ModelEntry[]> {
   const out: ModelEntry[] = []
   for (const dir of dirs) {
     const modelDir = path.join(root, dir)
+    // 手动放入/历史下载的含 # 文件名在此惰性规范化（幂等）
+    await normalizeHashNames(modelDir).catch(() => {})
     let name = dir
     try {
       const meta = JSON.parse(await fs.readFile(path.join(modelDir, '_meta.json'), 'utf8')) as {
