@@ -40,7 +40,8 @@ import {
   registerArkModelSchemePrivileges,
   registerArkModelProtocol,
   registerModelIpc,
-  listLocalModels
+  listLocalModels,
+  deleteModel
 } from './modelLibrary'
 import { createAiService } from './ai'
 
@@ -278,6 +279,22 @@ function registerIpc(): void {
 
   ipcMain.handle(IPC.modelsSetCurrent, async (_e, payload: { dir: string }): Promise<void> => {
     await setCurrentModel(payload.dir)
+  })
+
+  // 删除模型：若删的是当前干员 → 自动切到剩余可用模型；一个不剩 → 清空指向（桌宠显示引导）
+  ipcMain.handle(IPC.modelsDelete, async (_e, payload: { dir: string }): Promise<void> => {
+    await deleteModel(payload.dir)
+    if (getSettings().currentModel === payload.dir) {
+      const remaining = (await listLocalModels()).filter((m) => m.skel && m.dir !== payload.dir)
+      const next = remaining[0]
+      if (next) {
+        await setCurrentModel(next.dir)
+      } else {
+        setSetting('currentModel', null)
+        broadcast(IPC.modelChanged, { dir: '', name: '' }) // 无 skel → 桌宠回落引导文案
+      }
+    }
+    trayRef?.refresh()
   })
 
   ipcMain.handle(IPC.chatSend, async (_e, payload: { text: string }) => aiService.send(payload.text))

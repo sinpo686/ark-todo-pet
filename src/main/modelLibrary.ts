@@ -359,6 +359,19 @@ export async function importModelZip(zipPath: string): Promise<void> {
   }
 }
 
+/** 删除本地模型目录（含穿越防护；不删 models 根与其他目录） */
+export async function deleteModel(dir: string): Promise<void> {
+  if (!/^[\w.#-]+$/.test(dir)) throw new Error(`非法模型目录名: ${dir}`)
+  const root = await modelsRoot()
+  const target = path.resolve(root, dir)
+  const relFromRoot = path.relative(root, target)
+  if (relFromRoot.startsWith('..') || path.isAbsolute(relFromRoot) || relFromRoot === '') {
+    throw new Error('拒绝删除：路径越界')
+  }
+  await fs.rm(target, { recursive: true, force: true })
+  console.log(`[modelLibrary] 模型已删除: ${dir}`)
+}
+
 // ---------- arkmodel:// 协议（renderer 访问本地模型的统一通道，dev/prod 一致） ----------
 
 /** app ready 前调用：注册特权 scheme（standard 才能被 URL 正确解析，supportFetchAPI 才能被 fetch） */

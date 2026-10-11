@@ -66,6 +66,9 @@ const api = {
   async modelsSetCurrent(dir: string): Promise<void> {
     await ipcRenderer.invoke(IPC.modelsSetCurrent, { dir })
   },
+  modelsDelete(dir: string): Promise<void> {
+    return ipcRenderer.invoke(IPC.modelsDelete, { dir })
+  },
   onModelChanged(cb: (dir: string) => void): () => void {
     const listener = (_e: Electron.IpcRendererEvent, dir: string): void => cb(dir)
     ipcRenderer.on(IPC.modelChanged, listener)

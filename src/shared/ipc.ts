@@ -25,6 +25,7 @@ export const IPC = {
   modelsDownloadProgress: 'models:download-progress',
   modelsImportZip: 'models:import-zip',
   modelsSetCurrent: 'models:set-current',
+  modelsDelete: 'models:delete',
   modelChanged: 'model:changed',
   aiTest: 'ai:test',
   chatSend: 'chat:send',
@@ -86,6 +87,7 @@ export interface ApiShape {
   onModelsDownloadProgress(cb: (p: { dir: string; pct: number }) => void): () => void
   modelsImportZip(): Promise<{ ok: boolean; dir?: string; error?: string }>
   modelsSetCurrent(dir: string): Promise<void>
+  modelsDelete(dir: string): Promise<void>
   onModelChanged(cb: (entry: ModelEntry) => void): () => void
   aiTest(): Promise<{ ok: boolean; latencyMs?: number; error?: string }>
   openChat(): void

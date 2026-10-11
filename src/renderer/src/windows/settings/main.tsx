@@ -131,18 +131,36 @@ function SettingsWindow(): React.JSX.Element {
                 {m.dir === settings.currentModel ? '● ' : ''}
                 {m.name}
               </span>
-              <button
-                className="btn primary"
-                disabled={m.dir === settings.currentModel || !m.skel}
-                onClick={(): void => {
-                  window.api
-                    .modelsSetCurrent(m.dir)
-                    .then(() => window.api.settingsGet().then(setSettings))
-                    .catch((e) => console.error('切换失败:', String(e)))
-                }}
-              >
-                {m.dir === settings.currentModel ? '使用中' : '使用'}
-              </button>
+              <span className="model-actions">
+                <button
+                  className="btn primary"
+                  disabled={m.dir === settings.currentModel || !m.skel}
+                  onClick={(): void => {
+                    window.api
+                      .modelsSetCurrent(m.dir)
+                      .then(() => window.api.settingsGet().then(setSettings))
+                      .catch((e) => console.error('切换失败:', String(e)))
+                  }}
+                >
+                  {m.dir === settings.currentModel ? '使用中' : '使用'}
+                </button>
+                <button
+                  className="btn danger"
+                  title="删除该模型的本地文件"
+                  onClick={(): void => {
+                    if (!window.confirm(`确定删除干员「${m.name}」的本地模型文件？`)) return
+                    window.api
+                      .modelsDelete(m.dir)
+                      .then(() => {
+                        reloadLocal()
+                        return window.api.settingsGet().then(setSettings)
+                      })
+                      .catch((e) => console.error('删除失败:', String(e)))
+                  }}
+                >
+                  删除
+                </button>
+              </span>
             </div>
           ))}
         </div>

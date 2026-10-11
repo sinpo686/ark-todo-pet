@@ -132,6 +132,21 @@ h1 {
   background: var(--accent-soft);
 }
 
+.btn.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: #fdeaea;
+}
+
+.model-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
 .row-head {
   display: flex;
   align-items: center;
