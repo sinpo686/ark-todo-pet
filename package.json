@@ -26,6 +26,8 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@pixi/unsafe-eval": "^7.4.3",
     "electron-store": "^8.2.0",
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.4.299",
     "pixi-spine": "^4.0.6",
     "pixi.js": "^7.4.3",
     "yauzl": "^3.4.0"

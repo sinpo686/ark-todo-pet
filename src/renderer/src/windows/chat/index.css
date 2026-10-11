@@ -162,3 +162,58 @@ body {
   color: var(--text-3);
   cursor: default;
 }
+
+.chat-attach-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.chat-attach-btn:hover {
+  background: #f0f2f4;
+}
+
+.chat-attach-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 0 10px;
+  padding: 4px 8px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-remove {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.chat-attach-error {
+  flex: none;
+  margin: 0 10px;
+  color: var(--danger, #dc2626);
+  font-size: 11px;
+  padding: 2px 0;
+}

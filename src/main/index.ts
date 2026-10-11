@@ -1,6 +1,6 @@
 /** 主进程入口：单实例锁、三窗口、托盘、IPC 路由、30s 提醒/番茄钟调度循环。 */
 
-import { app, BrowserWindow, ipcMain, net, Notification } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, Notification } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { IPC } from '../shared/ipc'
 import type { TodosMutateMsg, AppSettingsShape } from '../shared/ipc'
@@ -44,6 +44,7 @@ import {
   deleteModel
 } from './modelLibrary'
 import { createAiService } from './ai'
+import { extractTextFromFile } from './docExtract'
 
 // arkmodel:// 必须在 app ready 之前注册为特权 scheme（standard+supportFetchAPI
 // 才能被 renderer 的 fetch 正确解析），模块加载期即生效
@@ -297,8 +298,29 @@ function registerIpc(): void {
     trayRef?.refresh()
   })
 
-  ipcMain.handle(IPC.chatSend, async (_e, payload: { text: string }) => aiService.send(payload.text))
+  ipcMain.handle(
+    IPC.chatSend,
+    async (
+      _e,
+      payload: { text: string; attachment?: { name: string; text: string; truncated: boolean } }
+    ): Promise<ReturnType<typeof aiService.send>> => aiService.send(payload.text, payload.attachment)
+  )
   ipcMain.handle(IPC.chatHistory, () => aiService.getUiHistory())
+  ipcMain.handle(IPC.chatAttach, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title: '附加文档（pdf / docx / txt / md）',
+      filters: [
+        { name: '文档', extensions: ['pdf', 'docx', 'txt', 'md'] }
+      ]
+    })
+    if (result.canceled || result.filePaths.length === 0) {
+      return { ok: false, error: '已取消' }
+    }
+    const r = await extractTextFromFile(result.filePaths[0])
+    if (!r.ok) return { ok: false, error: r.error }
+    return { ok: true, name: r.name, text: r.text, truncated: r.truncated }
+  })
 
   ipcMain.handle(IPC.aiTest, async (): Promise<{ ok: boolean; latencyMs?: number; error?: string }> => {
     const { ai } = getSettings()

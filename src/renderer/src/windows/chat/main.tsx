@@ -9,6 +9,8 @@ function ChatWindow(): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMsgShape[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [attachment, setAttachment] = useState<{ name: string; text: string; truncated: boolean } | null>(null)
+  const [attachError, setAttachError] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -48,11 +50,16 @@ function ChatWindow(): React.JSX.Element {
   const send = (): void => {
     const text = input.trim()
     if (!text || sending) return
+    const att = attachment // 本轮附件（随发随清，一次性）
     setInput('')
+    setAttachment(null)
     setSending(true)
-    setMessages((prev) => [...prev, { role: 'user', content: text }])
+    setMessages((prev) => [
+      ...prev,
+      { role: 'user', content: att ? `${text}\n📎 ${att.name}` : text }
+    ])
     window.api
-      .chatSend(text)
+      .chatSend(text, att ?? undefined)
       .then((replies) => {
         setMessages((prev) => [...prev, ...replies])
       })
@@ -60,6 +67,20 @@ function ChatWindow(): React.JSX.Element {
         setMessages((prev) => [...prev, { role: 'assistant', content: `发送失败：${String(e)}` }])
       })
       .finally(() => setSending(false))
+  }
+
+  const attach = (): void => {
+    setAttachError('')
+    window.api
+      .chatAttach()
+      .then((r) => {
+        if (!r.ok || !r.name || r.text === undefined) {
+          if (r.error && r.error !== '已取消') setAttachError(r.error)
+          return
+        }
+        setAttachment({ name: r.name, text: r.text, truncated: r.truncated ?? false })
+      })
+      .catch((e) => setAttachError(String(e)))
   }
 
   return (
@@ -87,11 +108,30 @@ function ChatWindow(): React.JSX.Element {
         )}
         {sending && <div className="chat-toolnote">…</div>}
       </div>
+      {attachment && (
+        <div className="chat-attach-chip" title={attachment.truncated ? '文档过长，仅取前 3 万字' : attachment.name}>
+          <span className="chip-name">
+            📎 {attachment.name}（{attachment.text.length} 字{attachment.truncated ? '，已截断' : ''}）
+          </span>
+          <button type="button" className="chip-remove" onClick={(): void => setAttachment(null)} aria-label="移除附件">
+            ×
+          </button>
+        </div>
+      )}
+      {attachError && <div className="chat-attach-error">{attachError}</div>}
       <div className="chat-input-row">
+        <button
+          type="button"
+          className="chat-attach-btn"
+          title="附加文档（pdf / docx / txt / md）——她可以读文档并提取行动项"
+          onClick={attach}
+        >
+          📎
+        </button>
         <input
           className="chat-input"
           value={input}
-          placeholder="输入消息，回车发送…"
+          placeholder={attachment ? '文档已附上，说要提取哪些待办…' : '输入消息，回车发送…'}
           autoFocus
           onChange={(e): void => setInput(e.target.value)}
           onKeyDown={(e): void => {

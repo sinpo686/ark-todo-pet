@@ -82,8 +82,20 @@ const api = {
   openChat(): void {
     ipcRenderer.send(IPC.openChat)
   },
-  chatSend(text: string): Promise<import('../shared/ipc').ChatMsgShape[]> {
-    return ipcRenderer.invoke(IPC.chatSend, { text })
+  chatSend(
+    text: string,
+    attachment?: { name: string; text: string; truncated: boolean }
+  ): Promise<import('../shared/ipc').ChatMsgShape[]> {
+    return ipcRenderer.invoke(IPC.chatSend, { text, attachment })
+  },
+  chatAttach(): Promise<{
+    ok: boolean
+    name?: string
+    text?: string
+    truncated?: boolean
+    error?: string
+  }> {
+    return ipcRenderer.invoke(IPC.chatAttach)
   },
   chatGetHistory(): Promise<import('../shared/ipc').ChatMsgShape[]> {
     return ipcRenderer.invoke(IPC.chatHistory)

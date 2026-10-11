@@ -30,7 +30,8 @@ export const IPC = {
   aiTest: 'ai:test',
   chatSend: 'chat:send',
   chatHistory: 'chat:history',
-  openChat: 'chat:open'
+  openChat: 'chat:open',
+  chatAttach: 'chat:attach'
 } as const
 
 export type TodosMutateMsg =
@@ -91,8 +92,10 @@ export interface ApiShape {
   onModelChanged(cb: (entry: ModelEntry) => void): () => void
   aiTest(): Promise<{ ok: boolean; latencyMs?: number; error?: string }>
   openChat(): void
-  chatSend(text: string): Promise<ChatMsgShape[]>
+  chatSend(text: string, attachment?: { name: string; text: string; truncated: boolean }): Promise<ChatMsgShape[]>
   chatGetHistory(): Promise<ChatMsgShape[]>
+  /** 选择并提取文档文本（pdf/docx/txt/md；主进程弹文件框） */
+  chatAttach(): Promise<{ ok: boolean; name?: string; text?: string; truncated?: boolean; error?: string }>
   onTodosChanged(cb: (todos: Todo[]) => void): () => void
   onPomoChanged(cb: (state: PomoState) => void): () => void
   onMoodChanged(cb: (mood: Mood) => void): () => void

@@ -38,6 +38,13 @@ export interface AiServiceDeps {
 }
 
 const MAX_HISTORY = 20
+
+/** 附件（文档全文只随本轮注入，长期历史仅保留标记） */
+export interface ChatAttachment {
+  name: string
+  text: string
+  truncated: boolean
+}
 const MAX_TOOL_ROUNDS = 3
 const FAIL_LIMIT = 3
 const TIMEOUT_MS = 30_000
@@ -55,10 +62,11 @@ function buildSystemPrompt(todos: Todo[], mood: Mood): string {
   const moodHint =
     mood === 'gloomy' ? '用户待办堆积较多，语气可以关切一些。' : mood === 'happy' ? '用户完成得不错，语气轻快一些。' : ''
   return [
-    '你是用户的桌面干员助理（明日方舟风格），语气简洁干练、少语气词，中文回复。',
+    '你是博士的桌面干员助理（明日方舟风格），语气简洁干练、少语气词，中文回复，全程称呼用户为「博士」。',
     `当前时间：${new Date(now).toLocaleString('zh-CN', { hour12: false })}。${moodHint}`,
     '你可以用工具管理用户的待办：用户表达"要做某事/提醒我"时调用 add_todo（时间解析成 due_at）；用户问待办时调用 list_todos；用户说完成某事时调用 complete_todo。',
-    '除用户明确要求外不要主动罗列全部待办。',
+    '除博士明确要求外不要主动罗列全部待办。',
+    '当博士的消息附带文档（形如「博士附带了文档《…》」的引文块）时：优先从文档中识别行动项/任务/待办，主动询问博士是否加入待办清单；博士确认后逐条调用 add_todo（文档中的时间解析为 due_at）。若博士要求总结或提问，先满足要求，再提示可提取行动项。',
     '【当前待办】',
     `逾期（${g.overdue.length}）：\n${overdue || '（无）'}`,
     `今天与未来（${g.upcoming.length}）：\n${today || '（无）'}`,
@@ -67,7 +75,7 @@ function buildSystemPrompt(todos: Todo[], mood: Mood): string {
 }
 
 export function createAiService(deps: AiServiceDeps): {
-  send: (text: string) => Promise<ChatMsg[]>
+  send: (text: string, attachment?: ChatAttachment) => Promise<ChatMsg[]>
   getUiHistory: () => ChatMsg[]
   isDisabled: () => boolean
   /** 测试/恢复用 */
@@ -175,13 +183,13 @@ export function createAiService(deps: AiServiceDeps): {
       failCount = 0
     },
     getUiHistory: (): ChatMsg[] => [...uiHistory],
-    async send(text: string): Promise<ChatMsg[]> {
+    async send(text: string, attachment?: ChatAttachment): Promise<ChatMsg[]> {
       const out: ChatMsg[] = []
       const cfg = deps.getAiConfig()
       if (!cfg.baseUrl || !cfg.apiKey || !cfg.model) {
         const m: ChatMsg = {
           role: 'assistant',
-          content: '还没有配置 AI。打开 设置 → AI 对话，填写 Base URL / API Key / 模型名（或选预设）后就能和我聊天、口头添加待办了。'
+          content: '博士，还没有配置 AI。打开 设置 → AI 对话，填写 Base URL / API Key / 模型名（或选预设）后就能和我聊天、口头添加待办了。'
         }
         pushUi({ role: 'user', content: text })
         pushUi(m)
@@ -194,11 +202,19 @@ export function createAiService(deps: AiServiceDeps): {
         return out
       }
 
+      // 附件：全文只随本轮 API 请求注入；历史仅保留标记（控制后续轮次 token）
+      const userApiText = attachment
+        ? `博士附带了文档《${attachment.name}》${attachment.truncated ? '（原文过长，仅前 3 万字）' : ''}\n"""\n${attachment.text}\n"""\n\n${text}`
+        : text
+      const userHistoryText = attachment
+        ? `${text}\n[附件《${attachment.name}》内容已随本条消息提供]`
+        : text
+
       pushUi({ role: 'user', content: text })
       const messages: ApiMsg[] = [
         { role: 'system', content: buildSystemPrompt(deps.getTodos(), deps.getMood()) },
         ...history,
-        { role: 'user', content: text }
+        { role: 'user', content: userApiText }
       ]
 
       try {
@@ -235,10 +251,10 @@ export function createAiService(deps: AiServiceDeps): {
             continue // 带着 tool 结果再问一轮
           }
 
-          // 纯文本回复：收尾
+          // 纯文本回复：收尾。历史落盘版 user 消息用「问题 + 附件标记」替换全文注入版
           const reply = msg.content ?? '（空回复）'
           messages.push({ role: 'assistant', content: reply })
-          history = messages.slice(1) // 去掉 system（每次重建）
+          history = [...history, { role: 'user', content: userHistoryText }, { role: 'assistant', content: reply }]
           trimHistory()
           pushUi({ role: 'assistant', content: reply })
           out.push({ role: 'assistant', content: reply })
