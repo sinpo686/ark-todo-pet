@@ -87,6 +87,12 @@ export function openTodoPanel(petWin: BrowserWindow): void {
       // 未固定时失焦自动收起（固定态由 renderer 经 todoPanelPin 通知 main 维持）
       if (todoPanelWin && !panelPinned) todoPanelWin.hide()
     })
+    if (is.dev) {
+      // dev 冒烟：转发面板 renderer 的 console 到主进程终端（无人工验证取证）
+      todoPanelWin.webContents.on('console-message', (_event, ...args) => {
+        console.log('[todo-console]', ...args)
+      })
+    }
     loadWindowPage(todoPanelWin, 'todo')
     console.log('[windows] todo 面板已创建（懒）')
   }

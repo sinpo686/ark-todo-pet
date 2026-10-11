@@ -1,12 +1,12 @@
+/** 待办面板窗口入口 */
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-
-function TodoWindow(): React.JSX.Element {
-  return <div id="todo-window-root">Todo Window Placeholder</div>
-}
+import { App } from './App'
+import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <TodoWindow />
+    <App />
   </StrictMode>
 )
