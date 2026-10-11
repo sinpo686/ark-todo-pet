@@ -1,0 +1,499 @@
+/* 待办面板：白色浅色主题（用户指令覆盖原深色方案），紧凑，适配 360×480 无边框窗（标题栏自绘拖拽区）。
+   配色约定：白底深字、浅灰分隔线与组头底色、红色仅用于逾期强调、按钮浅灰描边。 */
+
+:root {
+  --bg: #ffffff; /* 面板主体 */
+  --bg-soft: #f5f6f8; /* 标题栏 / 底栏 / 组头 */
+  --hover: #f0f2f4; /* 条目与按钮 hover */
+  --border: #d9dee4; /* 描边 / 分隔线 */
+  --border-strong: #c4cbd3; /* hover 描边加深 */
+  --text: #1f2328; /* 主文字 */
+  --text-2: #57606a; /* 次级文字 */
+  --text-3: #8b929e; /* 弱化文字 / 占位符 */
+  --accent: #3b76e0; /* 焦点 / 链接 / 勾选框（非按钮） */
+  --danger: #dc2626; /* 红色仅用于逾期强调 */
+  --amber: #b45309; /* pin 激活 */
+  --focus-green: #15803d; /* 休息阶段文案 */
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+  user-select: none;
+}
+
+input,
+select,
+button,
+textarea {
+  font-family: inherit;
+  user-select: text;
+}
+
+button {
+  cursor: pointer;
+}
+
+#todo-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ---------- 标题栏（无边框窗自绘拖拽区） ---------- */
+
+.titlebar {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  padding: 0 6px 0 12px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.titlebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 4px;
+  color: var(--text-2);
+}
+
+.pin-btn {
+  -webkit-app-region: no-drag;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.pin-btn:hover {
+  background: var(--hover);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.pin-btn.pinned {
+  color: var(--amber);
+}
+
+/* ---------- 新增框 ---------- */
+
+.add-row {
+  padding: 8px 8px 4px;
+  flex-shrink: 0;
+}
+
+.add-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.add-input:focus {
+  border-color: var(--accent);
+}
+
+.add-input::placeholder {
+  color: var(--text-3);
+}
+
+/* ---------- 分组列表 ---------- */
+
+.groups {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+
+.groups::-webkit-scrollbar {
+  width: 6px;
+}
+
+.groups::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.group + .group {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid #eceef1; /* 浅灰分隔线 */
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 2px 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-soft); /* 组头浅灰底 */
+  font-size: 11px;
+  color: var(--text-2);
+  width: fit-content;
+}
+
+.group-count {
+  background: #e8ebee;
+  border-radius: 8px;
+  padding: 0 7px;
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.group-list {
+  list-style: none;
+}
+
+.empty {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 2.2;
+}
+
+/* ---------- 单条待办 ---------- */
+
+.todo-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: 8px;
+}
+
+.todo-item:hover {
+  background: var(--hover);
+}
+
+.todo-item input[type='checkbox'] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.todo-main {
+  flex: 1;
+  min-width: 0;
+  padding-right: 60px; /* 给 hover 操作按钮让位 */
+}
+
+.todo-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.todo-title {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.todo-item.overdue .todo-title {
+  color: var(--danger); /* 红色仅用于逾期强调 */
+}
+
+.todo-due {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.todo-item.overdue .todo-due {
+  color: var(--danger);
+}
+
+.prio {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.prio.high {
+  background: var(--danger);
+}
+
+.prio.normal {
+  background: #3b82f6;
+}
+
+.prio.low {
+  background: #9ca3af;
+}
+
+.todo-notes {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-3);
+  word-break: break-all;
+}
+
+/* hover 显示 编辑 / 删除（浅灰描边小按钮） */
+
+.actions {
+  position: absolute;
+  right: 8px;
+  top: 5px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.todo-item:hover .actions,
+.todo-item:focus-within .actions {
+  opacity: 1;
+}
+
+.icon-btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-2);
+  width: 26px;
+  height: 22px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--hover);
+}
+
+/* ---------- 行内编辑表单 ---------- */
+
+.edit-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.edit-form input,
+.edit-form select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 5px 8px;
+  font-size: 12px;
+  outline: none;
+}
+
+.edit-form input:focus,
+.edit-form select:focus {
+  border-color: var(--accent);
+}
+
+.edit-form select option {
+  background: var(--bg);
+}
+
+input[type='datetime-local'] {
+  color-scheme: light;
+}
+
+.edit-row2 {
+  display: flex;
+  gap: 6px;
+}
+
+.edit-row2 .edit-due {
+  flex: 1.4;
+  min-width: 0;
+}
+
+.edit-row2 .edit-priority {
+  flex: 1;
+  min-width: 0;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* 按钮：浅灰描边风格（无实心填充） */
+
+.btn {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 14px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text-2);
+}
+
+.btn:hover {
+  border-color: var(--border-strong);
+  background: var(--hover);
+  color: var(--text);
+}
+
+.btn-primary {
+  font-weight: 600;
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* ---------- 番茄钟底栏 ---------- */
+
+.pomo-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  background: var(--bg-soft);
+  border-top: 1px solid var(--border);
+}
+
+.pomo-btn {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.pomo-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--hover);
+}
+
+.pomo-btn.pomo-start {
+  font-weight: 600;
+  border-color: var(--border-strong);
+}
+
+.pomo-info {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pomo-phase {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.pomo-phase.focus {
+  color: var(--amber);
+}
+
+.pomo-phase.rest {
+  color: var(--focus-green);
+}
+
+.pomo-remain {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pomo-count {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* ---------- 撤销 toast ---------- */
+
+.toast {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 6px 7px 12px;
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: 0 4px 14px rgba(31, 35, 40, 0.12);
+  animation: toast-in 0.15s ease-out;
+}
+
+.toast-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toast .undo {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.toast .undo:hover {
+  background: var(--hover);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

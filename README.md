@@ -13,6 +13,39 @@
 
 技术栈：Electron + React + TypeScript + pixi.js (pixi-spine) + electron-store。
 
+## 安装与使用
+
+```bash
+# 方式一：安装包（推荐）
+#   dist/ArkTodoPet-Setup-1.0.0.exe 双击安装（NSIS，可选目录、建桌面快捷方式）
+# 方式二：免安装
+#   dist/win-unpacked/ArkTodoPet.exe 直接运行
+```
+
+| 操作 | 效果 |
+|------|------|
+| 单击干员 | 打开待办面板（输入框支持「交报告 明天下午3点」自然语言） |
+| 双击干员 | 戳一戳（头顶气泡回应） |
+| 按住拖动 | 拖到哪停在哪（落点成为新的溜达高度，重启记忆） |
+| 右键干员 | 「干员通讯」AI 聊天层（需先配 API key，见设置） |
+| 托盘图标 | 切换干员 / 待办 / 设置 / 退出 |
+| 待办面板右上角 ⚙ | 设置（模型下载/缩放 0.5–2.0×/开机自启/番茄钟时长/AI 配置） |
+
+数据位置：`%APPDATA%/ark-todo-pet/`（todos.json 带自动轮换备份 .bak；models/ 为模型目录；settings.json 为设置）。
+
+## 开发
+
+```bash
+npm install
+npm run dev        # 开发调试
+npm test           # vitest（122 项）
+npm run typecheck
+npm run build      # 生产构建（out/）
+npx electron-builder --win   # 打 NSIS 安装包（dist/）
+```
+
+> 打包网络备注：electron-builder 的 nsis/7zip 资源包需可用的镜像或代理；本机方案是手动下载后经本地 HTTP 服务喂给 `ELECTRON_BUILDER_BINARIES_MIRROR`（详见仓库台账记录）。
+
 ## 致谢与参考 (Acknowledgements)
 
 本项目站在以下优秀开源项目的肩膀上，特此说明各部分的参考来源：

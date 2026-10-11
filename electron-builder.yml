@@ -1,0 +1,25 @@
+appId: com.sinpo686.arktodopet
+productName: ArkTodoPet
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+win:
+  executableName: ArkTodoPet
+  target:
+    - nsis
+nsis:
+  artifactName: ArkTodoPet-Setup-${version}.${ext}
+  shortcutName: ArkTodoPet
+  uninstallDisplayName: ArkTodoPet（代办桌宠）
+  createDesktopShortcut: always
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+npmRebuild: false
