@@ -40,6 +40,7 @@ export function App(): React.JSX.Element {
   const [input, setInput] = useState('')
   const [pinned, setPinned] = useState(false)
   const [undoTodo, setUndoTodo] = useState<Todo | null>(null)
+  const [doneOpen, setDoneOpen] = useState(false)
   const undoTimer = useRef<number | null>(null)
   const [pomo, setPomo] = useState<PomoState>({ phase: 'idle', phaseEndsAt: 0, focusCount: 0 })
 
@@ -122,6 +123,10 @@ export function App(): React.JSX.Element {
 
   const groups = groupTodos(todos, now)
   const total = groups.overdue.length + groups.upcoming.length + groups.undated.length
+  // 已完成：不自动消失（用户裁定），折叠区展示、手动删除；按完成时间倒序
+  const doneList = todos
+    .filter((t) => t.done)
+    .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0))
 
   const renderGroup = (
     key: string,
@@ -185,7 +190,7 @@ export function App(): React.JSX.Element {
       </div>
 
       <main className="groups">
-        {total === 0 && (
+        {total === 0 && doneList.length === 0 && (
           <div className="empty">
             🎉 没有待办事项
             <br />
@@ -195,6 +200,54 @@ export function App(): React.JSX.Element {
         {renderGroup('overdue', '🔴 逾期', groups.overdue, true)}
         {renderGroup('upcoming', '📅 今天与未来', groups.upcoming, false)}
         {renderGroup('undated', '📥 无日期', groups.undated, false)}
+        {doneList.length > 0 && (
+          <section className="group done-group" data-group="done">
+            <button
+              type="button"
+              className="group-head done-toggle"
+              onClick={(): void => setDoneOpen((v) => !v)}
+            >
+              <span className="group-name">✅ 已完成（{doneList.length}）</span>
+              <span className="group-count">{doneOpen ? '收起 ▲' : '展开 ▼'}</span>
+            </button>
+            {doneOpen && (
+              <ul className="group-list">
+                {doneList.map((t) => (
+                  <li key={t.id} className="todo-item done" data-done="">
+                    <button
+                      type="button"
+                      className="check done"
+                      title="取消完成（恢复为未完成）"
+                      onClick={(): void => mutate({ op: 'toggle', payload: { id: t.id } })}
+                    >
+                      ✓
+                    </button>
+                    <span className="title done-title">{t.title}</span>
+                    {t.completedAt && (
+                      <span className="time done-time">
+                        {new Date(t.completedAt).toLocaleString('zh-CN', {
+                          month: 'numeric',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          hour12: false
+                        })}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      className="del done-del"
+                      title="彻底删除"
+                      onClick={(): void => handleDelete(t)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
       </main>
 
       <footer className="pomo-bar">

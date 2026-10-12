@@ -497,3 +497,39 @@ input[type='datetime-local'] {
     transform: none;
   }
 }
+
+/* 已完成折叠区（用户裁定：完成不自动消失，手动删除） */
+.done-toggle {
+  width: 100%;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.done-group .group-name {
+  color: var(--text-3, #8b929e);
+}
+
+.todo-item.done .done-title {
+  color: var(--text-3, #8b929e);
+  text-decoration: line-through;
+}
+
+.todo-item.done .check.done {
+  color: var(--ok, #15803d);
+}
+
+.done-time {
+  color: var(--text-3, #8b929e);
+  font-size: 11px;
+  flex: none;
+}
+
+.done-del {
+  color: var(--text-3, #8b929e);
+}
+
+.done-del:hover {
+  color: var(--danger, #dc2626);
+}
