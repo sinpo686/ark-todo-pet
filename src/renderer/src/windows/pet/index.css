@@ -43,3 +43,8 @@
     transform: translateX(-50%) translateY(0);
   }
 }
+
+/* 多行清单气泡（每小时高优先级提醒）：保留换行 */
+.pet-bubble {
+  white-space: pre-line;
+}

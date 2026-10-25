@@ -38,3 +38,15 @@ export function decideReminders(
   }
   return events
 }
+
+/** 每小时高优先级提醒（用户功能）：未完成 + priority=high；有截止的按时间升序在前，无截止的按创建时间垫底 */
+export function pickHighPriorityList(todos: Todo[]): Todo[] {
+  return todos
+    .filter((t) => !t.done && t.priority === 'high')
+    .sort((a, b) => {
+      const ad = a.dueAt ?? Number.POSITIVE_INFINITY
+      const bd = b.dueAt ?? Number.POSITIVE_INFINITY
+      if (ad !== bd) return ad - bd
+      return a.createdAt - b.createdAt
+    })
+}

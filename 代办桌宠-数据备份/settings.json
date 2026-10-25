@@ -1,0 +1,15 @@
+{
+	"petX": 1224,
+	"petY": 128,
+	"autostart": true,
+	"currentModel": "4010_etlchi_winter#5",
+	"reminderLeadMin": 15,
+	"pomoFocusMin": 25,
+	"pomoRestMin": 5,
+	"petScale": 0.6,
+	"ai": {
+		"baseUrl": "https://api.deepseek.com/v1",
+		"apiKey": "sk-ac64db4ebc4145aa84c62dc04d275c8a",
+		"model": "deepseek-chat"
+	}
+}

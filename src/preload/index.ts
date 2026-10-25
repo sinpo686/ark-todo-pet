@@ -29,6 +29,18 @@ const api = {
   petPressEnd(): void {
     ipcRenderer.send(IPC.petPressEnd)
   },
+  onHourlyRemind(
+    cb: (items: import('../shared/ipc').HourlyRemindItem[]) => void
+  ): () => void {
+    const listener = (
+      _e: Electron.IpcRendererEvent,
+      items: import('../shared/ipc').HourlyRemindItem[]
+    ): void => cb(items)
+    ipcRenderer.on(IPC.hourlyRemind, listener)
+    return (): void => {
+      ipcRenderer.removeListener(IPC.hourlyRemind, listener)
+    }
+  },
   onPetCursorNear(cb: (near: boolean) => void): () => void {
     const listener = (_e: Electron.IpcRendererEvent, near: boolean): void => cb(near)
     ipcRenderer.on(IPC.petCursorNear, listener)

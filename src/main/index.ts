@@ -9,7 +9,7 @@ import { addTodo, toggleTodo, editTodo, deleteTodo } from '../shared/todoStore'
 import { groupTodos } from '../shared/todoStore'
 import { computeMood } from '../shared/mood'
 import type { Mood } from '../shared/mood'
-import { decideReminders } from '../shared/reminders'
+import { decideReminders, pickHighPriorityList } from '../shared/reminders'
 import type { ReminderEvent } from '../shared/reminders'
 import { pomoStart, pomoTick, pomoStop, POMO_IDLE } from '../shared/pomodoro'
 import type { PomoState } from '../shared/pomodoro'
@@ -153,9 +153,32 @@ function notify(title: string, body: string): void {
   }
 }
 
+/** 每小时高优先级提醒：滚动计时（应用启动起每 X 分钟一轮，不按整点） */
+let lastHourlyRemindAt = Date.now()
+
 function runSchedulerTick(): void {
   const now = Date.now()
   const settings = getSettings()
+
+  // 每小时高优先级提醒（grilling 共识：仅手动标高、截止升序、气泡全报 8s、
+  // 空列表/专注中/桌宠隐藏 → 该轮消耗掉静默跳过）
+  if (
+    settings.hourlyRemind &&
+    now - lastHourlyRemindAt >= settings.hourlyRemindMin * 60_000
+  ) {
+    lastHourlyRemindAt = now
+    const list = pickHighPriorityList(todos)
+    if (list.length > 0 && pomoState.phase !== 'focus' && petWin && petWin.isVisible()) {
+      console.log(`[hourly] 高优先级提醒发送 ${Math.min(list.length, 20)} 条（间隔 ${settings.hourlyRemindMin} 分钟）`)
+      sendToPet(
+        petWin,
+        IPC.hourlyRemind,
+        list.slice(0, 20).map((t) => ({ title: t.title, dueAt: t.dueAt }))
+      )
+    } else if (list.length > 0) {
+      console.log(`[hourly] 该轮静默跳过（专注中/桌宠隐藏），候选 ${list.length} 条`)
+    }
+  }
 
   // 提醒：先发送（通知+pet 窗口），成功后才记 key——先记后发遇失败会永久丢提醒
   const events: ReminderEvent[] = decideReminders(todos, now, remindedSet, settings.reminderLeadMin)
@@ -335,6 +358,8 @@ function registerIpc(): void {
       pomoFocusMin: s.pomoFocusMin,
       pomoRestMin: s.pomoRestMin,
       petScale: s.petScale,
+      hourlyRemind: s.hourlyRemind,
+      hourlyRemindMin: s.hourlyRemindMin,
       ai: s.ai
     }
   })
@@ -352,6 +377,11 @@ function registerIpc(): void {
       setSetting('petScale', patch.petScale)
       if (petWin) applyPetScale(petWin, patch.petScale)
       console.log(`[settings] petScale=${patch.petScale}`)
+    }
+    if (patch.hourlyRemind !== undefined) setSetting('hourlyRemind', patch.hourlyRemind)
+    if (patch.hourlyRemindMin !== undefined) {
+      const m = [30, 60, 120].includes(patch.hourlyRemindMin) ? patch.hourlyRemindMin : 60
+      setSetting('hourlyRemindMin', m)
     }
     if (patch.ai !== undefined) setSetting('ai', patch.ai)
     if (patch.currentModel !== undefined && patch.currentModel !== null) {

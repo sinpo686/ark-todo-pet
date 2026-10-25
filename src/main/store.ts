@@ -64,6 +64,8 @@ const settingsStore = new ElectronStore<{
   pomoFocusMin: number
   pomoRestMin: number
   petScale: number
+  hourlyRemind: boolean
+  hourlyRemindMin: number
   ai: AiConfig
 }>({
   name: 'settings',
@@ -76,6 +78,8 @@ const settingsStore = new ElectronStore<{
     pomoFocusMin: 25,
     pomoRestMin: 5,
     petScale: 1,
+    hourlyRemind: true,
+    hourlyRemindMin: 60,
     ai: { baseUrl: '', apiKey: '', model: '' }
   }
 })
@@ -132,6 +136,8 @@ export interface AppSettings {
   pomoFocusMin: number
   pomoRestMin: number
   petScale: number
+  hourlyRemind: boolean
+  hourlyRemindMin: number
   ai: AiConfig
 }
 
@@ -145,6 +151,8 @@ export function getSettings(): AppSettings {
     pomoFocusMin: settingsStore.get('pomoFocusMin'),
     pomoRestMin: settingsStore.get('pomoRestMin'),
     petScale: settingsStore.get('petScale'),
+    hourlyRemind: settingsStore.get('hourlyRemind'),
+    hourlyRemindMin: settingsStore.get('hourlyRemindMin'),
     ai: settingsStore.get('ai')
   }
 }

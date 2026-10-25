@@ -38,6 +38,7 @@ export const IPC = {
   modelsDelete: 'models:delete',
   modelChanged: 'model:changed',
   aiTest: 'ai:test',
+  hourlyRemind: 'hourly:remind',
   chatSend: 'chat:send',
   chatHistory: 'chat:history',
   openChat: 'chat:open',
@@ -89,6 +90,7 @@ export interface ApiShape {
   petPressBegin(screenX: number, screenY: number): void
   petPressEnd(): void
   onPetCursorNear(cb: (near: boolean) => void): () => void
+  onHourlyRemind(cb: (items: HourlyRemindItem[]) => void): () => void
   /** 移动桌宠窗口到屏幕坐标（走动/拖拽/下落；主进程一次性 setPosition，节流由渲染层做） */
   petMoveWindow(x: number, y: number): void
   openTodoPanel(): void
@@ -128,7 +130,15 @@ export interface AppSettingsShape {
   pomoFocusMin: number
   pomoRestMin: number
   petScale: number
+  hourlyRemind: boolean
+  hourlyRemindMin: number
   ai: { baseUrl: string; apiKey: string; model: string }
+}
+
+/** 每小时高优先级提醒的条目（main→pet） */
+export interface HourlyRemindItem {
+  title: string
+  dueAt?: number
 }
 
 /** 聊天消息（UI 渲染形状） */

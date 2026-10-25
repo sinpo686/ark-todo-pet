@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { decideReminders } from './reminders'
+import { decideReminders, pickHighPriorityList } from './reminders'
 import type { Todo } from './types'
 
 const NOW = 1_700_000_000_000
@@ -90,5 +90,23 @@ describe('decideReminders 触发规则', () => {
     expect(decideReminders([mk({ id: 'a', dueAt })], dueAt, new Set(), 0)).toEqual([
       { todoId: 'a', title: 't', kind: 'due' }
     ])
+  })
+})
+
+describe('pickHighPriorityList（每小时高优先级提醒）', () => {
+  it('只取未完成的高优先级；有截止升序在前，无截止按创建时间垫底', () => {
+    const list = pickHighPriorityList([
+      mk({ id: 'a', title: '无日期高', priority: 'high', createdAt: NOW + 5 }),
+      mk({ id: 'b', title: '高截止晚', priority: 'high', dueAt: NOW + 200 * MIN }),
+      mk({ id: 'c', title: '高截止早', priority: 'high', dueAt: NOW + 100 * MIN }),
+      mk({ id: 'd', title: '普通', priority: 'normal', dueAt: NOW + MIN }),
+      mk({ id: 'e', title: '已完成高', priority: 'high', done: true, completedAt: NOW }),
+      mk({ id: 'f', title: '无日期高早', priority: 'high', createdAt: NOW + 1 })
+    ])
+    expect(list.map((t) => t.id)).toEqual(['c', 'b', 'f', 'a'])
+  })
+
+  it('没有高优先级时返回空', () => {
+    expect(pickHighPriorityList([mk({ id: 'x', priority: 'normal' })])).toEqual([])
   })
 })

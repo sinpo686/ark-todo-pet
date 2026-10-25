@@ -282,6 +282,27 @@ function SettingsWindow(): React.JSX.Element {
             onChange={(e): void => patch({ pomoFocusMin: Number(e.target.value) || 25 }, false)}
           />
         </Field>
+        <Field label="每小时高优先级提醒">
+          <input
+            type="checkbox"
+            checked={settings.hourlyRemind}
+            onChange={(e): void => patch({ hourlyRemind: e.target.checked })}
+          />
+        </Field>
+        {settings.hourlyRemind && (
+          <Field label="提醒间隔">
+            <select
+              className="input"
+              style={{ width: 130, flex: 'none' }}
+              value={String(settings.hourlyRemindMin)}
+              onChange={(e): void => patch({ hourlyRemindMin: Number(e.target.value) })}
+            >
+              <option value="30">每 30 分钟</option>
+              <option value="60">每 1 小时</option>
+              <option value="120">每 2 小时</option>
+            </select>
+          </Field>
+        )}
         <Field label="休息时长（分钟）">
           <input
             className="input num"

@@ -22,10 +22,10 @@ function PetWindow(): React.JSX.Element {
   const [bubble, setBubble] = useState('')
   const bubbleTimer = useRef<number | null>(null)
   const moodRef = useRef<BubbleMood>('normal')
-  const showBubble = (text: string): void => {
+  const showBubble = (text: string, durationMs = 4000): void => {
     setBubble(text)
     if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current)
-    bubbleTimer.current = window.setTimeout(() => setBubble(''), 4000)
+    bubbleTimer.current = window.setTimeout(() => setBubble(''), durationMs)
   }
 
   useEffect(() => {
@@ -150,6 +150,21 @@ function PetWindow(): React.JSX.Element {
     const offRemind = window.api.onRemindTrigger((event) => {
       stage.triggerRemind()
       showBubble(`${pickLine('remind', moodRef.current, Math.random)}${event.title}`)
+    })
+    // 每小时高优先级提醒（grilling 共识）：气泡逐行全报，8 秒，超 8 条截断
+    const offHourly = window.api.onHourlyRemind((items) => {
+      const now = Date.now()
+      const lines = items.slice(0, 8).map((it) => {
+        if (it.dueAt === undefined) return `• ${it.title}`
+        if (it.dueAt < now) return `• ${it.title}（已逾期）`
+        const d = new Date(it.dueAt)
+        const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+        const today = d.toDateString() === new Date(now).toDateString()
+        return today ? `• ${it.title}（今天 ${hm}）` : `• ${it.title}（${d.getMonth() + 1}月${d.getDate()}日 ${hm}）`
+      })
+      if (items.length > 8) lines.push(`…还有 ${items.length - 8} 条`)
+      console.log(`[hourly-pet] 气泡展示 ${items.length} 条：${lines[0] ?? ''}`)
+      showBubble(`⏰ 高优先级提醒\n${lines.join('\n')}`, 8000)
     })
     // 心情闲聊：≥10 分钟一条（低频，不打扰）
     const chatterTimer = window.setInterval(() => {
@@ -299,6 +314,7 @@ function PetWindow(): React.JSX.Element {
       offCursorNear()
       offPomo()
       offRemind()
+      offHourly()
       offModelChanged()
       window.clearInterval(chatterTimer)
       if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current)

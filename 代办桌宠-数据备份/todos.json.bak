@@ -1,0 +1,33 @@
+{
+	"todos": [
+		{
+			"id": "20e2793d-3268-4c4f-98d2-8200bb3d3f6a",
+			"title": "羊城杯初赛平台开放提醒",
+			"priority": "normal",
+			"done": false,
+			"createdAt": 1791778935899,
+			"source": "ai",
+			"notes": "平台入口 ycb2026.dasctf.com，10月15日15时开放",
+			"dueAt": 1792047600000
+		},
+		{
+			"id": "135899f4-cade-43c1-bb3d-8a9f746ab95c",
+			"title": "确认羊城杯账号密码可登录",
+			"priority": "normal",
+			"done": false,
+			"createdAt": 1791778935906,
+			"source": "ai",
+			"notes": "账号：报名预留手机号；默认密码：Das#手机号后四位",
+			"dueAt": 1792047600000
+		},
+		{
+			"id": "814db44b-7f7c-463b-9f3c-9e014da205ec",
+			"title": "方法",
+			"priority": "normal",
+			"done": true,
+			"createdAt": 1791778957325,
+			"source": "manual",
+			"completedAt": 1791778959793
+		}
+	]
+}
