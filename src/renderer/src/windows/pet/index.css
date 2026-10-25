@@ -1,10 +1,12 @@
 /* T11 头顶气泡：角色上方居中，浅色，淡入淡出 */
 .pet-bubble {
   position: absolute;
+  /* 用户裁定：气泡整体在小人左侧——按窗口宽度比例左移（7vw），各缩放下一致 */
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(calc(-50% - 7vw));
   bottom: 62%;
-  max-width: 220px;
+  /* 自适应：小缩放（窗口窄）时不超过窗口宽度，防两侧裁切 */
+  max-width: min(220px, calc(100vw - 24px));
   padding: 6px 10px;
   border: 1px solid #d9dee4;
   border-radius: 10px;
@@ -23,7 +25,7 @@
 .pet-bubble::after {
   content: '';
   position: absolute;
-  left: 50%;
+  left: 62%;
   bottom: -5px;
   width: 8px;
   height: 8px;
