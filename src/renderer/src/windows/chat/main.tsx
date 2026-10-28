@@ -36,12 +36,13 @@ function ChatWindow(): React.JSX.Element {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [messages])
 
-  // DEV 冒烟：加载后自动发一条，未配置 key 时应收到引导回复（取证主进程→聊天窗链路）
+  // DEV 冒烟：仅验证「窗口↔主进程」链路——绝不真调 API（教训：曾用用户真实
+  // key 自动发消息，多轮调试后耗尽用户配额）。改为只拉历史（零 API 调用）。
   useEffect(() => {
     if (!import.meta.env.DEV) return
     const t = window.setTimeout(() => {
-      void window.api.chatSend('冒烟测试').then((replies) => {
-        console.log(`[chat-smoke] 回复 ${replies.length} 条：${replies[0]?.content.slice(0, 40) ?? '（无）'}…`)
+      void window.api.chatGetHistory().then((h) => {
+        console.log(`[chat-smoke] 链路就绪，历史 ${h.length} 条（不调用 AI）`)
       })
     }, 2000)
     return () => window.clearTimeout(t)
